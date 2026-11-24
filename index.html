@@ -57,6 +57,26 @@
   #status.ok{border-top-color:var(--ok)}
   #hint{position:absolute;left:12px;top:12px;max-width:300px;background:linear-gradient(180deg,#eef0f2,#d6d9de);color:var(--ink);border-left:6px solid var(--warn);padding:8px 12px;font-weight:800;font-size:13px;line-height:1.5;box-shadow:0 6px 18px rgba(0,0,0,.4)}
   #fileIn{display:none}
+  /* 녹화 */
+  #rec{position:absolute;left:12px;bottom:14px;display:flex;align-items:center;gap:10px}
+  #recBtn{width:74px;height:74px;border-radius:50%;border:5px solid #fff;background:#c8102e;cursor:pointer;box-shadow:0 6px 18px rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;font-family:'Gothic A1';font-weight:900;color:#fff;font-size:14px}
+  #recBtn.on{background:#fff;border-color:#c8102e;color:#c8102e;animation:pulse 1s infinite}
+  @keyframes pulse{50%{box-shadow:0 0 0 10px rgba(200,16,46,.25)}}
+  #recInfo{background:rgba(14,18,28,.85);border:1px solid rgba(255,255,255,.1);border-radius:4px;padding:8px 12px;font-weight:800;font-size:13px;line-height:1.5}
+  #recInfo b{font-family:'Barlow';font-style:italic;font-size:22px}
+  #clipsBtn{font-family:'Gothic A1';font-weight:900;font-size:14px;background:var(--cyan2);color:#fff;border:0;border-radius:3px;padding:12px 14px;cursor:pointer}
+  #clips{position:absolute;left:0;right:0;bottom:0;max-height:62%;background:linear-gradient(180deg,#eef0f2,#d6d9de);color:var(--ink);transform:translateY(105%);transition:transform .35s;overflow:auto;box-shadow:0 -10px 30px rgba(0,0,0,.5);z-index:20}
+  #clips.open{transform:none}
+  #clips .top{position:sticky;top:0;background:linear-gradient(90deg,var(--navy2),var(--navy));color:#fff;display:flex;align-items:center;gap:8px;padding:10px 14px;font-weight:900}
+  #clips .top span{flex:1}
+  #clips .list{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;padding:12px}
+  .clip{background:#fff;border:1px solid #c5c9d0;border-radius:3px;overflow:hidden}
+  .clip video{width:100%;aspect-ratio:16/9;background:#000;display:block}
+  .clip .mt{display:flex;justify-content:space-between;padding:6px 10px;font-weight:800;font-size:13px}
+  .clip .mt i{font-style:normal;color:#5c6370;font-weight:700}
+  .clip .bt{display:flex;gap:6px;padding:0 10px 10px}
+  .clip .bt button{flex:1;font-family:'Gothic A1';font-weight:900;font-size:13px;border:0;border-radius:3px;padding:9px 0;cursor:pointer}
+  .b-share{background:var(--cyan2);color:#fff}.b-save{background:#1f2a44;color:#fff}.b-del{background:#d9dce1;color:#4b5260;flex:.5!important}
   @media (max-width:820px){ .wrap{grid-template-columns:1fr} #panel{width:230px;font-size:12px} #hint{display:none} header h1{font-size:14px} }
 </style>
 </head>
@@ -131,8 +151,9 @@
               <li>위쪽 <b>카메라 맞추기</b>를 눌러요.</li>
               <li>화면의 <b>그림자 콘</b>에 실제 콘이 겹치도록 태블릿을 움직여요.</li>
               <li>3개가 모두 <b>초록</b>이 되면 삼각대를 고정해요.</li>
-              <li>태블릿 기본 카메라 앱을 <b>1080p 60fps</b>로 켜서 촬영해요. (태블릿은 움직이지 않기)</li>
+              <li>화면 왼쪽 아래 <b>녹화</b> 버튼으로 타격마다 찍어요. (치기 직전 녹화 → 공이 그물에 맞으면 정지)</li>
               <li>세게·약하게·뜬공·땅볼을 섞어 <b>10~20번</b> 쳐요.</li>
+              <li><b>영상 보내기 → 공유 → Claude 앱</b>을 고르면 대화에 바로 첨부돼요.</li>
             </ol>
             <p class="note">그늘과 햇빛이 섞인 곳보다 고르게 밝은 곳이 좋아요. 콘 뒤 배경은 단색일수록 좋아요.</p>
           </div>
@@ -177,6 +198,15 @@
     </div>
     <div id="hint">그림자 콘이 실제 콘보다 <b>크면</b> 뒤로, <b>작으면</b> 앞으로 옮겨요. 높이가 안 맞으면 삼각대 높이를 조절해요.</div>
     <div id="status">카메라를 켜주세요</div>
+    <div id="rec" style="display:none">
+      <button id="recBtn">녹화</button>
+      <div id="recInfo">타격 영상 <b id="clipN">0</b>개<br><span id="recSpec">-</span></div>
+      <button id="clipsBtn">영상 보내기 ▲</button>
+    </div>
+    <div id="clips">
+      <div class="top"><span>찍은 타격 영상 · 공유 → Claude 앱을 고르면 대화에 바로 첨부돼요</span><button class="sm" id="shareAll">전체 공유</button><button class="sm" id="closeClips">닫기 ▼</button></div>
+      <div class="list" id="clipList"></div>
+    </div>
     <input type="file" id="fileIn" accept="image/*" capture="environment">
   </section>
 </main>
@@ -281,6 +311,7 @@
     });
     CONES.forEach((m, i) => document.getElementById('c' + i).classList.toggle('ok', found[i]));
     const k = found.filter(Boolean).length;
+    if (performance.now() < (window.__hold || 0)) return;
     statusEl.classList.toggle('ok', k === 3);
     statusEl.textContent = k === 3 ? '완벽해요! 삼각대를 고정하고 촬영하세요' : `콘 ${k}/3개 맞음 · 그림자에 콘을 겹쳐주세요`;
   }
@@ -300,12 +331,15 @@
       vid.srcObject = stream; await vid.play();
       source = 'cam'; vid.style.display = 'block'; pic.style.display = 'none'; empty.style.display = 'none';
       cancelAnimationFrame(raf); raf = requestAnimationFrame(loop);
+      document.getElementById('rec').style.display = 'flex';
+      const st = stream.getVideoTracks()[0].getSettings();
+      document.getElementById('recSpec').textContent = `${st.width || '?'}×${st.height || '?'} · ${Math.round(st.frameRate || 0)}fps`;
     } catch (e) {
       err.textContent = (e && e.name === 'NotAllowedError') ? '카메라 권한이 거부됐어요. 브라우저 주소창의 자물쇠/설정에서 카메라를 허용해 주세요.' : '카메라를 켤 수 없어요. 다른 앱이 카메라를 쓰고 있지 않은지 확인하거나 "사진 찍어서 확인"을 눌러주세요. (' + (e && e.name || '오류') + ')';
       err.style.display = 'block';
     }
   }
-  function stopCam() { if (stream) stream.getTracks().forEach(t => t.stop()); stream = null; cancelAnimationFrame(raf); source = null; vid.style.display = 'none'; pic.style.display = 'none'; empty.style.display = 'flex'; found = [false, false, false]; CONES.forEach((m, i) => document.getElementById('c' + i).classList.remove('ok')); statusEl.textContent = '카메라를 켜주세요'; statusEl.classList.remove('ok'); draw(); }
+  function stopCam() { if (recorder && recorder.state === 'recording') recorder.stop(); document.getElementById('rec').style.display = 'none'; if (stream) stream.getTracks().forEach(t => t.stop()); stream = null; cancelAnimationFrame(raf); source = null; vid.style.display = 'none'; pic.style.display = 'none'; empty.style.display = 'flex'; found = [false, false, false]; CONES.forEach((m, i) => document.getElementById('c' + i).classList.remove('ok')); statusEl.textContent = '카메라를 켜주세요'; statusEl.classList.remove('ok'); draw(); }
   document.getElementById('startCam').onclick = startCam;
   document.getElementById('stopCam').onclick = stopCam;
   // 사진으로 확인 (카메라를 쓸 수 없는 화면용)
@@ -321,7 +355,53 @@
   document.querySelectorAll('[data-dir]').forEach(b => b.onclick = () => { CFG.dir = b.dataset.dir === 'r' ? 1 : -1; document.querySelectorAll('[data-dir]').forEach(x => x.classList.toggle('on', x === b)); if (source) detect(); draw(); });
   document.querySelectorAll('[data-lens]').forEach(b => b.onclick = () => { CFG.hfov = LENS[b.dataset.lens]; document.querySelectorAll('[data-lens]').forEach(x => x.classList.toggle('on', x === b)); if (source) detect(); draw(); });
   addEventListener('resize', draw);
-  window.__setup = { CFG, project, detect, draw };
+  // ---------- 녹화 · 공유 ----------
+  let recorder = null, chunks = [], recT0 = 0, recTimer = 0; const clips = [];
+  const MIMES = ['video/mp4;codecs=avc1', 'video/mp4', 'video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
+  const pickMime = () => (window.MediaRecorder ? MIMES.find(m => MediaRecorder.isTypeSupported(m)) : null) || '';
+  const recBtn = document.getElementById('recBtn');
+  recBtn.onclick = () => {
+    if (!stream) return;
+    if (recorder && recorder.state === 'recording') { recorder.stop(); return; }
+    const mime = pickMime(); chunks = [];
+    try { recorder = new MediaRecorder(stream, mime ? { mimeType: mime, videoBitsPerSecond: 12000000 } : { videoBitsPerSecond: 12000000 }); }
+    catch (e) { alertBox('이 브라우저는 녹화를 지원하지 않아요. 태블릿 기본 카메라 앱으로 찍어주세요.'); return; }
+    recorder.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
+    recorder.onstop = () => {
+      clearInterval(recTimer); recBtn.classList.remove('on'); recBtn.textContent = '녹화';
+      const type = recorder.mimeType || mime || 'video/webm'; const ext = type.includes('mp4') ? 'mp4' : 'webm';
+      const blob = new Blob(chunks, { type }); const n = clips.length + 1; const sec = (performance.now() - recT0) / 1000;
+      const st = stream ? stream.getVideoTracks()[0].getSettings() : {};
+      const name = `swing_${String(n).padStart(2, '0')}_${Math.round(st.frameRate || 0)}fps_${CFG.hfov === 78 ? 'wide' : 'std'}_${CFG.dir > 0 ? 'R' : 'L'}.${ext}`;
+      clips.push({ name, blob, url: URL.createObjectURL(blob), sec, size: blob.size });
+      renderClips(); window.__hold = performance.now() + 2500; statusEl.textContent = `${n}번 영상 저장됨 · 계속 찍거나 "영상 보내기"`;
+    };
+    recorder.start(250); recT0 = performance.now(); recBtn.classList.add('on');
+    recTimer = setInterval(() => { recBtn.textContent = ((performance.now() - recT0) / 1000).toFixed(1) + '초'; }, 100);
+  };
+  function alertBox(t) { statusEl.textContent = t; }
+  function renderClips() {
+    document.getElementById('clipN').textContent = clips.length;
+    const L = document.getElementById('clipList');
+    L.innerHTML = clips.map((c, i) => `<div class="clip"><video src="${c.url}" controls playsinline muted></video><div class="mt"><span>${i + 1}번 타격</span><i>${c.sec.toFixed(1)}초 · ${(c.size / 1048576).toFixed(1)}MB</i></div><div class="bt"><button class="b-share" data-i="${i}">공유</button><button class="b-save" data-s="${i}">저장</button><button class="b-del" data-d="${i}">삭제</button></div></div>`).join('') || '<p style="padding:10px;font-weight:700">아직 찍은 영상이 없어요.</p>';
+    L.querySelectorAll('[data-i]').forEach(b => b.onclick = () => share([clips[+b.dataset.i]]));
+    L.querySelectorAll('[data-s]').forEach(b => b.onclick = () => save(clips[+b.dataset.s]));
+    L.querySelectorAll('[data-d]').forEach(b => b.onclick = () => { const i = +b.dataset.d; URL.revokeObjectURL(clips[i].url); clips.splice(i, 1); renderClips(); });
+  }
+  async function share(list) {
+    if (!list.length) return;
+    const files = list.map(c => new File([c.blob], c.name, { type: c.blob.type }));
+    if (navigator.canShare && navigator.canShare({ files })) {
+      try { await navigator.share({ files, title: 'BSPN 타격 영상', text: `타격 영상 ${files.length}개 (카메라 설치 도우미)` }); return; }
+      catch (e) { if (e && e.name === 'AbortError') return; }
+    }
+    list.forEach(save); statusEl.textContent = '공유가 안 되는 브라우저라 파일로 저장했어요. Claude 앱에서 첨부해 주세요.';
+  }
+  function save(c) { const a = document.createElement('a'); a.href = c.url; a.download = c.name; document.body.appendChild(a); a.click(); a.remove(); }
+  document.getElementById('clipsBtn').onclick = () => { renderClips(); document.getElementById('clips').classList.add('open'); };
+  document.getElementById('closeClips').onclick = () => document.getElementById('clips').classList.remove('open');
+  document.getElementById('shareAll').onclick = () => share(clips);
+  window.__setup = { CFG, project, detect, draw, clips };
   draw();
 })();
 </script>
