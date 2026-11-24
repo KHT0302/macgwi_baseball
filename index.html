@@ -133,7 +133,7 @@
           <div class="hd">준비물과 설정 <span>SETUP</span></div>
           <div class="bd">
             <dl class="spec">
-              <dt>콘</dt><dd><b>3</b>개 · 티 밑, 1m, 2m</dd>
+              <dt>콘</dt><dd><b>3</b>개 · 티 밑, 1m, 2m (형광 미니콘 OK)</dd>
               <dt>태블릿 거리</dt><dd>콘 줄에서 <b>3.5</b>m</dd>
               <dt>태블릿 높이</dt><dd>약 <b>1</b>m (티 높이)</dd>
               <dt>그물</dt><dd>티에서 <b>3</b>m · 높이 <b>3</b>m 이상 (천장 있는 케이지 추천)</dd>
@@ -188,6 +188,10 @@
         <button class="sm" data-dir="l">← 왼쪽</button>
       </div>
       <div class="row">
+        <button class="sm on" data-cone="mini">미니콘</button>
+        <button class="sm" data-cone="big">큰 콘</button>
+      </div>
+      <div class="row">
         <button class="sm" data-lens="wide">광각 렌즈</button>
         <button class="sm on" data-lens="std">일반 렌즈</button>
       </div>
@@ -221,7 +225,7 @@
   });
 
   // ---------- 설정 ----------
-  const CFG = { dist: 3.5, camH: 1.0, aimX: 1.0, aimY: 0.45, dir: 1, hfov: 62 };
+  const CFG = { dist: 3.5, camH: 1.0, aimX: 1.0, aimY: 0.45, dir: 1, hfov: 62, coneH: 0.09, coneW: 0.11 };
   const LENS = { std: 62, wide: 78 };
   const vid = document.getElementById('vid'), pic = document.getElementById('pic'), ov = document.getElementById('ov');
   const view = document.getElementById('view'), empty = document.getElementById('empty'), statusEl = document.getElementById('status');
@@ -273,7 +277,7 @@
     g.fillStyle = 'rgba(255,255,255,.85)'; g.beginPath(); g.arc(tt.x, tt.y - tt.s * 0.045, tt.s * 0.045, 0, Math.PI * 2); g.fill();
     // 콘 그림자
     CONES.forEach((m, i) => {
-      const base = P(m, 0), top = P(m, 0.23); const hw = base.s * 0.11;
+      const base = P(m, 0), top = P(m, CFG.coneH); const hw = base.s * CFG.coneW;
       const ok = found[i];
       g.fillStyle = ok ? 'rgba(34,197,94,.45)' : 'rgba(255,122,26,.28)';
       g.strokeStyle = ok ? 'rgba(34,197,94,1)' : 'rgba(255,255,255,.9)'; g.lineWidth = Math.max(2, R.w / 500);
@@ -290,30 +294,43 @@
     const f0 = P(0.15, 1.0), f1 = P(2.4, 1.6);
     g.strokeStyle = 'rgba(245,196,0,.8)'; g.lineWidth = Math.max(2, R.w / 450); g.setLineDash([12, 8]);
     g.beginPath(); g.moveTo(f0.x, f0.y); g.quadraticCurveTo((f0.x + f1.x) / 2, f0.y - (f0.y - f1.y) * 1.6, f1.x, f1.y); g.stroke(); g.setLineDash([]);
+    (hits || []).forEach(h => { const bx = h.x * R.w, by = h.y * R.h, z = Math.max(14, R.w / 60); g.strokeStyle = h.ok ? '#22c55e' : '#f5c400'; g.lineWidth = 3; g.strokeRect(bx - z, by - z, z * 2, z * 2); });
     g.restore();
   }
 
   // ---------- 콘 자동 확인 (주황색 픽셀 찾기) ----------
   const work = document.createElement('canvas'); const wg = work.getContext('2d', { willReadFrequently: true });
+  let hits = [];
   function detect() {
     const src = source === 'cam' ? vid : pic; const R = contentRect();
     if (!R.iw) return;
-    const W = 320, H = Math.round(320 * R.ih / R.iw); work.width = W; work.height = H;
+    const W = 480, H = Math.round(480 * R.ih / R.iw); work.width = W; work.height = H;
     try { wg.drawImage(src, 0, 0, W, H); } catch (e) { return; }
     const d = wg.getImageData(0, 0, W, H).data;
-    const isCone = i => { const r = d[i], gg = d[i + 1], b = d[i + 2]; return r > 150 && r > gg * 1.25 && gg > b * 1.15 && r - b > 90; };
+    // 콘 색: 노랑~주황~빨강, 채도와 밝기가 높은 픽셀 (나무 바닥은 채도가 낮아 제외)
+    const isCone = i => {
+      const r = d[i] / 255, g = d[i + 1] / 255, b = d[i + 2] / 255, mx = Math.max(r, g, b), mn = Math.min(r, g, b), c = mx - mn;
+      if (mx < 0.45 || c / mx < 0.58) return false;
+      let h = mx === r ? ((g - b) / c) % 6 : mx === g ? (b - r) / c + 2 : (r - g) / c + 4; h *= 60; if (h < 0) h += 360;
+      return h <= 75 || h >= 345;
+    };
+    hits = [];
     found = CONES.map(m => {
-      const base = project(m, 0, W, H), top = project(m, 0.23, W, H);
-      const hw = Math.max(4, base.s * 0.16), x0 = Math.floor(base.x - hw), x1 = Math.ceil(base.x + hw), y0 = Math.floor(top.y - hw * 0.6), y1 = Math.ceil(base.y + hw * 0.6);
-      let n = 0, tot = 0;
-      for (let y = Math.max(0, y0); y < Math.min(H, y1); y++) for (let x = Math.max(0, x0); x < Math.min(W, x1); x++) { tot++; if (isCone((y * W + x) * 4)) n++; }
-      return tot > 0 && n / tot > 0.06;
+      const base = project(m, 0, W, H), top = project(m, CFG.coneH, W, H);
+      const hw = Math.max(5, base.s * (CFG.coneW + 0.12)), x0 = Math.floor(base.x - hw), x1 = Math.ceil(base.x + hw);
+      const y0 = Math.floor(top.y - base.s * 0.08), y1 = Math.ceil(base.y + base.s * 0.08);
+      let n = 0, sx = 0, sy = 0;
+      for (let y = Math.max(0, y0); y < Math.min(H, y1); y++) for (let x = Math.max(0, x0); x < Math.min(W, x1); x++) if (isCone((y * W + x) * 4)) { n++; sx += x; sy += y; }
+      const need = Math.max(6, (base.s * CFG.coneW) * (base.y - top.y) * 0.12);
+      const ok = n >= need;
+      if (n >= 4) hits.push({ x: sx / n / W, y: sy / n / H, ok });
+      return ok;
     });
     CONES.forEach((m, i) => document.getElementById('c' + i).classList.toggle('ok', found[i]));
     const k = found.filter(Boolean).length;
     if (performance.now() < (window.__hold || 0)) return;
-    statusEl.classList.toggle('ok', k === 3);
-    statusEl.textContent = k === 3 ? '완벽해요! 삼각대를 고정하고 촬영하세요' : `콘 ${k}/3개 맞음 · 그림자에 콘을 겹쳐주세요`;
+    statusEl.classList.toggle('ok', k === CONES.length);
+    statusEl.textContent = k === CONES.length ? '완벽해요! 삼각대를 고정하고 촬영하세요' : `콘 ${k}/${CONES.length}개 맞음 · 그림자에 콘을 겹쳐주세요`;
   }
 
   // ---------- 카메라 ----------
@@ -332,7 +349,11 @@
       source = 'cam'; vid.style.display = 'block'; pic.style.display = 'none'; empty.style.display = 'none';
       cancelAnimationFrame(raf); raf = requestAnimationFrame(loop);
       document.getElementById('rec').style.display = 'flex';
-      const st = stream.getVideoTracks()[0].getSettings();
+      let st = stream.getVideoTracks()[0].getSettings();
+      if ((st.frameRate || 0) < 50) {
+        try { await stream.getVideoTracks()[0].applyConstraints({ width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { min: 50, ideal: 60 } }); } catch (e) {}
+        st = stream.getVideoTracks()[0].getSettings();
+      }
       document.getElementById('recSpec').textContent = `${st.width || '?'}×${st.height || '?'} · ${Math.round(st.frameRate || 0)}fps`;
     } catch (e) {
       err.textContent = (e && e.name === 'NotAllowedError') ? '카메라 권한이 거부됐어요. 브라우저 주소창의 자물쇠/설정에서 카메라를 허용해 주세요.' : '카메라를 켤 수 없어요. 다른 앱이 카메라를 쓰고 있지 않은지 확인하거나 "사진 찍어서 확인"을 눌러주세요. (' + (e && e.name || '오류') + ')';
@@ -353,6 +374,7 @@
   };
   // 방향 · 렌즈
   document.querySelectorAll('[data-dir]').forEach(b => b.onclick = () => { CFG.dir = b.dataset.dir === 'r' ? 1 : -1; document.querySelectorAll('[data-dir]').forEach(x => x.classList.toggle('on', x === b)); if (source) detect(); draw(); });
+  document.querySelectorAll('[data-cone]').forEach(b => b.onclick = () => { const big = b.dataset.cone === 'big'; CFG.coneH = big ? 0.23 : 0.09; CFG.coneW = big ? 0.11 : 0.11; document.querySelectorAll('[data-cone]').forEach(x => x.classList.toggle('on', x === b)); if (source) detect(); draw(); });
   document.querySelectorAll('[data-lens]').forEach(b => b.onclick = () => { CFG.hfov = LENS[b.dataset.lens]; document.querySelectorAll('[data-lens]').forEach(x => x.classList.toggle('on', x === b)); if (source) detect(); draw(); });
   addEventListener('resize', draw);
   // ---------- 녹화 · 공유 ----------
