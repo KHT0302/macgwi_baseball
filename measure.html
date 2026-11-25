@@ -156,7 +156,9 @@
       </div>
       <div class="card" id="fileCtl4" style="display:none"><h3>영상 시험</h3>
         <div class="row"><button id="playSlow">0.25배속 재생</button><button id="pauseBtn">멈춤</button></div></div>
-      <div class="card"><h3>기록</h3><div id="hist"><p class="tip">아직 없음</p></div></div>
+      <div class="card"><h3>기록</h3><div id="hist"><p class="tip">아직 없음</p></div>
+        <div class="row" style="margin-top:8px"><button class="main" id="allBtn" style="display:none">모은 영상 한 번에 Claude로 보내기</button></div>
+        <p class="tip" id="allTx" style="margin-top:4px">타격할 때마다 영상이 자동으로 모여요 (최근 10개)</p></div>
       <div class="card"><h3>알아둘 점</h3><p>카메라 1대는 <b>옆에서 본 속도와 각도</b>를 재요. 공이 비스듬히(좌·우로) 날아가면 속도가 실제보다 조금 작게 나와요. 신뢰도가 "낮음"이면 그 값은 쓰지 말고 다시 치거나 직접 입력해요.</p></div>
     </div>
   </aside>
@@ -442,9 +444,27 @@ function clipStart() {
 }
 function clipStop() {
   if (!rec || rec.state !== 'recording') return;
-  const r = rec; r.onstop = () => { const type = r.mimeType || 'video/mp4'; lastClip = new Blob(recChunks, { type }); $('clipBtn').style.display = 'block'; }; try { r.stop(); } catch (e) {}
+  const r = rec; r.onstop = () => { const type = r.mimeType || 'video/mp4'; lastClip = new Blob(recChunks, { type }); $('clipBtn').style.display = 'block'; addClip(lastClip, lastRes); }; try { r.stop(); } catch (e) {}
 }
 setInterval(() => { if (rec && rec.state === 'recording' && (state === 'armed') && Date.now() - recT > 15000) clipStart(); }, 2000);
+const CLIPS = [];
+function clipName(r, d, ext) { const p2 = n => String(n).padStart(2, '0'); return `SWING_${p2(d.getMonth() + 1)}${p2(d.getDate())}_${p2(d.getHours())}${p2(d.getMinutes())}${p2(d.getSeconds())}_${r && r.ok ? Math.round(r.ev) + 'kmh_' + Math.round(r.la) + 'deg_' + r.conf : 'fail'}.${ext}`; }
+function addClip(blob, r) {
+  const ext = blob.type.includes('mp4') ? 'mp4' : 'webm';
+  CLIPS.push({ file: new File([blob], clipName(r, new Date(), ext), { type: blob.type }), res: r && { ok: r.ok, ev: r.ev, la: r.la, conf: r.conf, n: r.n, rms: r.rms, diag: r.diag, why: r.why } });
+  while (CLIPS.length > 10) CLIPS.shift();
+  $('allBtn').style.display = 'block';
+  const fails = CLIPS.filter(c => !c.res || !c.res.ok).length;
+  $('allTx').textContent = `모인 영상 ${CLIPS.length}개 (실패 ${fails}개) · 최근 10개까지 보관`;
+}
+$('allBtn').onclick = async () => {
+  if (!CLIPS.length) return;
+  const info = { saved: new Date().toISOString(), setup: { pts: S.pts, teeH: S.teeH, ballCol: S.ballCol, ballRpx: S.ballRpx, hfov: S.hfov, dir: S.dir, W, H }, clips: CLIPS.map(c => ({ name: c.file.name, res: c.res })) };
+  const files = [...CLIPS.map(c => c.file), new File([JSON.stringify(info, null, 1)], 'BSPN_측정설정.json', { type: 'application/json' })];
+  try { if (navigator.canShare && navigator.canShare({ files })) { await navigator.share({ files, title: 'BSPN 타구 측정 테스트' }); $('allTx').textContent = '보냈어요. Claude 앱 대화에서 전송만 눌러주세요'; return; } } catch (e) { if (e && e.name === 'AbortError') return; }
+  for (const f of files) { const a = document.createElement('a'); a.href = URL.createObjectURL(f); a.download = f.name; a.click(); await new Promise(r => setTimeout(r, 400)); }
+  $('allTx').textContent = '공유가 안 돼서 파일로 저장했어요. 파일 앱에서 Claude로 보내주세요';
+};
 $('clipBtn').onclick = async () => {
   if (!lastClip) return;
   const d = new Date(), p2 = n => String(n).padStart(2, '0');
