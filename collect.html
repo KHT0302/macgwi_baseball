@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BSPN 타구 측정 · 테스트 자료 모아보기</title>
+<link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Saira+Condensed:wght@700;800&family=Gothic+A1:wght@500;700;800&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#0b0f19;color:#fff;font-family:'Gothic A1',sans-serif;padding-bottom:40px}
+  header{background:#121a2e;border-bottom:3px solid #c8102e;padding:12px 16px;display:flex;align-items:center;gap:10px}
+  header h1{font-family:'Black Han Sans';font-weight:400;font-size:21px}
+  header em{font-style:normal;background:#c8102e;padding:0 6px;font-family:'Saira Condensed';font-weight:800;margin-right:4px}
+  main{max-width:900px;margin:0 auto;padding:14px;display:flex;flex-direction:column;gap:12px}
+  .card{background:#151d31;border:1px solid #23304d;border-radius:8px;padding:14px}
+  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  input{font-family:'Saira Condensed';font-weight:800;font-size:24px;width:120px;padding:4px 10px;border-radius:5px;border:2px solid #33405e}
+  button{font-family:'Gothic A1';font-weight:800;font-size:15px;color:#fff;background:#1f2940;border:1px solid #33405e;border-radius:6px;padding:11px 14px}
+  button.main{background:#c8102e;border-color:#ff5a5f;font-size:18px;padding:14px;flex:1}
+  .tip{font-size:13px;color:#9fb3cf;line-height:1.6}
+  #st{font-weight:800;font-size:14px;margin-top:8px}
+  .it{display:flex;gap:12px;align-items:center;padding:8px 0;border-bottom:1px solid #23304d}
+  .it img{width:160px;height:90px;object-fit:cover;border-radius:4px;background:#000;flex:none}
+  .it b{font-family:'Saira Condensed';font-weight:800;font-size:22px}
+  .ok{color:#7ee2a8}.mid{color:#ffe066}.bad{color:#ff8a8a}
+</style>
+</head>
+<body>
+<header><h1><em>BSPN</em>테스트 자료 모아보기</h1></header>
+<main>
+  <div class="card">
+    <p class="tip">다른 아이패드에서 측정 페이지로 친 타격 자료가 자동으로 여기 모여요. <b>전부 받아서 Claude로 보내기</b>를 누르고 Claude 앱을 고르면 돼요.</p>
+    <div class="row" style="margin-top:10px"><span class="tip">방 코드</span><input id="room" value="1234" maxlength="8"><button id="load">불러오기</button></div>
+    <p id="st" class="tip"></p>
+  </div>
+  <div class="row"><button class="main" id="send">전부 받아서 Claude로 보내기</button></div>
+  <div class="card"><div id="list"><p class="tip">불러오기를 눌러주세요</p></div></div>
+  <div class="row"><button id="clr">올라온 자료 지우기 (보낸 뒤에)</button></div>
+</main>
+<script>
+const DB = new URLSearchParams(location.search).get('db') || 'https://macgwi-baseball-class-default-rtdb.asia-southeast1.firebasedatabase.app';
+const $ = id => document.getElementById(id);
+const qRoom = new URLSearchParams(location.search).get('room'); if (qRoom) $('room').value = qRoom;
+let PK = [];
+const room = () => encodeURIComponent($('room').value.trim() || '1234');
+const st = (t, c) => { $('st').textContent = t; $('st').className = c || 'tip'; };
+async function load() {
+  st('불러오는 중…'); $('list').innerHTML = '';
+  try {
+    const r = await fetch(`${DB}/rooms/${room()}/debug.json?shallow=true`); if (!r.ok) throw new Error('HTTP ' + r.status);
+    const ids = Object.keys((await r.json()) || {}).sort();
+    PK = [];
+    for (let i = 0; i < ids.length; i++) {
+      st(`불러오는 중… ${i + 1} / ${ids.length}`);
+      const q = await fetch(`${DB}/rooms/${room()}/debug/${ids[i]}.json`); if (q.ok) { const p = await q.json(); if (p) PK.push(p); }
+    }
+    PK.sort((a, b) => a.ts - b.ts); render();
+    const fails = PK.filter(p => !p.res || !p.res.ok).length;
+    st(PK.length ? `타격 자료 ${PK.length}개 (실패 ${fails}개)` : '아직 올라온 자료가 없어요', PK.length ? 'ok' : 'tip');
+  } catch (e) { st('불러오지 못했어요 (' + e.message + ') — 인터넷을 확인해 주세요', 'bad'); }
+}
+function render() {
+  $('list').innerHTML = PK.length ? PK.map((p, i) => {
+    const r = p.res || {}, f = p.frames && p.frames[Math.min(p.frames.length - 1, 4)];
+    const cls = r.ok ? (r.conf === 'lo' ? 'bad' : r.conf === 'mid' ? 'mid' : 'ok') : 'bad';
+    return `<div class="it">${f ? `<img src="data:image/jpeg;base64,${f.jpg}">` : ''}<div><div class="tip">${i + 1}번 · ${new Date(p.ts).toLocaleTimeString('ko-KR')}</div>
+      <b class="${cls}">${r.ok ? Math.round(r.ev) + ' km/h · ' + Math.round(r.la) + '°' : '측정 실패'}</b>
+      <div class="tip">${r.ok ? '신뢰도 ' + ({ hi: '높음', mid: '보통', lo: '낮음' }[r.conf] || '-') : (r.why || '')} · 후보 ${p.cands || 0}개 · ${(p.setup && p.setup.fps) || '?'}fps · 프레임 ${p.frames ? p.frames.length : 0}장</div></div></div>`;
+  }).join('') : '<p class="tip">자료가 없어요</p>';
+}
+$('load').onclick = load;
+$('send').onclick = async () => {
+  if (!PK.length) await load(); if (!PK.length) return;
+  const d = new Date(), p2 = n => String(n).padStart(2, '0');
+  const name = `BSPN_테스트자료_${d.getMonth() + 1}월${d.getDate()}일_${p2(d.getHours())}${p2(d.getMinutes())}_${PK.length}개.json`;
+  const file = new File([JSON.stringify({ room: $('room').value, count: PK.length, packets: PK })], name, { type: 'application/json' });
+  try { if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: 'BSPN 테스트 자료' }); st('공유 창에서 Claude를 골라 보내주세요', 'ok'); return; } } catch (e) { if (e && e.name === 'AbortError') return; }
+  const a = document.createElement('a'); a.href = URL.createObjectURL(file); a.download = name; a.click();
+  st('파일로 저장했어요. 이 파일을 Claude 대화에 올려주세요', 'ok');
+};
+let arm = 0;
+$('clr').onclick = async () => {
+  if (Date.now() - arm > 3000) { arm = Date.now(); $('clr').textContent = '한 번 더 누르면 지워요'; setTimeout(() => $('clr').textContent = '올라온 자료 지우기 (보낸 뒤에)', 3000); return; }
+  try { await fetch(`${DB}/rooms/${room()}/debug.json`, { method: 'DELETE' }); PK = []; render(); st('지웠어요', 'ok'); } catch (e) { st('지우지 못했어요', 'bad'); }
+  $('clr').textContent = '올라온 자료 지우기 (보낸 뒤에)';
+};
+load();
+</script>
+</body>
+</html>

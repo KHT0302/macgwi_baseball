@@ -142,6 +142,8 @@
         <div class="row" style="align-items:center"><span style="font-size:13px;color:#b9c2d6;flex:none">방 코드</span><input id="room" maxlength="8" placeholder="노트북 화면의 코드" style="flex:1;font-family:'Saira Condensed';font-weight:800;font-size:24px;padding:4px 8px;border-radius:4px;border:2px solid #33405e;width:100px"><button id="roomGo" style="flex:none">연결</button></div>
         <p id="linkTx" class="tip" style="margin-top:6px">-</p>
         <label class="tip" style="display:flex;gap:6px;align-items:center;margin-top:4px"><input type="checkbox" id="autoSend" checked> 측정값을 체험존으로 자동 보내기 (신뢰도 보통 이상)</label>
+        <label class="tip" style="display:flex;gap:6px;align-items:center;margin-top:4px"><input type="checkbox" id="autoUp" checked> 테스트 자료 자동 올리기 (분석용 · 선생님이 모아봐요)</label>
+        <p class="tip" id="upTx"></p>
       </div>
       <div class="row"><button class="main" id="armBtn">타격 준비</button></div>
       <label class="tip" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="autoRearm" checked> 공을 다시 올리면 자동으로 준비</label>
@@ -434,6 +436,22 @@ function teeRatio(d) {
 // ---------- 측정 ----------
 let state = 'idle', base = 0, baseArr = [], lowN = 0, cap = [], trigT = 0, okN = 0, lastRes = null, track = null;
 const HIST = [];
+// ---------- 테스트 자료 자동 올리기 ----------
+const upCv = document.createElement('canvas'), upG = upCv.getContext('2d');
+let upN = 0;
+async function uploadDebug(res, frames, nC) {
+  try {
+    upCv.width = W; upCv.height = H; const img = upG.createImageData(W, H);
+    const fr = frames.map(f => { img.data.set(f.d); upG.putImageData(img, 0, 0); return { t: +f.t.toFixed(4), jpg: upCv.toDataURL('image/jpeg', 0.8).split(',')[1] }; });
+    frames.forEach(f => pool.push(f.d));
+    const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+    const pk = { id, ts: Date.now(), ua: navigator.userAgent.slice(0, 120), setup: { pts: S.pts, teeH: S.teeH, ballCol: S.ballCol, ballRpx: S.ballRpx, hfov: S.hfov, dir: S.dir, W, H, fps: fpsOf() }, trigT, res: { ok: res.ok, ev: res.ev, la: res.la, conf: res.conf, n: res.n, rms: res.rms, why: res.why, diag: res.diag, pts: (res.pts || []).map(p => ({ t: p.t, px: p.px, py: p.py })) }, cands: nC, frames: fr };
+    $('upTx').textContent = '테스트 자료 올리는 중…';
+    const r = await fetch(`${DB}/rooms/${encodeURIComponent(ROOM || '1234')}/debug/${id}.json`, { method: 'PUT', body: JSON.stringify(pk) });
+    if (!r.ok) throw new Error(r.status);
+    upN++; $('upTx').textContent = `테스트 자료 ${upN}개 올렸어요 ✔`; $('upTx').style.color = '#7ee2a8';
+  } catch (e) { $('upTx').textContent = '테스트 자료를 올리지 못했어요 (' + (e.message || e) + ')'; $('upTx').style.color = '#ff8a8a'; }
+}
 // ---------- 타격 영상 저장 (분석용) ----------
 let rec = null, recChunks = [], lastClip = null, recT = 0;
 function clipStart() {
@@ -551,7 +569,8 @@ function analyze() {
     const score = pts.length * 10 - f.rms * 20;
     if (!best || score > best.score) best = { score, pts, f };
   }
-  cap.forEach(f => { if (f !== curFrame) pool.push(f.d); }); cap = [];
+  const upFrames = fr.slice(Math.max(0, bgI - 1)).map(f => ({ t: f.t, d: f.d }));
+  cap.forEach(f => { if (f !== curFrame && !upFrames.some(u => u.d === f.d)) pool.push(f.d); }); cap = [];
   // 거짓 신호(공이 그대로 있음) 확인
   if (curFrame && teeRatio(curFrame.d) > base * 0.7 && (!best || best.pts.length < 3)) { state = 'armed'; ring.length = 0; lowN = 0; updBig(); return; }
   let res;
@@ -564,6 +583,7 @@ function analyze() {
   }
   res.diag = { fps: fpsOf(), cands: cands.length, frames: cands.length ? new Set(cands.map(c => c.k)).size : 0, pts: best ? best.pts.length : 0 };
   lastRes = res; track = res.ok ? res.pts : null; showRes(res); clipStop();
+  if ($('autoUp').checked) uploadDebug(res, upFrames, cands.length); else upFrames.forEach(f => pool.push(f.d));
   if (res.ok && res.conf !== 'lo' && $('autoSend').checked) sendHit(res);
   state = 'result'; okN = 0; updBig(); draw();
   window.__results = (window.__results || []).concat([{ ok: res.ok, ev: res.ev, la: res.la, n: res.n, rms: res.rms, conf: res.conf, cands: cands.length, trigT }]);
