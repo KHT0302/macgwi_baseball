@@ -185,7 +185,7 @@ async function camOn() {
   $('err').style.display = 'none';
   try {
     stopAll();
-    stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 60 } } });
+    stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 120 } } });
     let tr = stream.getVideoTracks()[0], st = tr.getSettings();
     if ((st.frameRate || 0) < 50) { try { await tr.applyConstraints({ width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { min: 50, ideal: 60 } }); } catch (e) {} st = tr.getSettings(); }
     vid.srcObject = stream; await vid.play(); source = 'cam';
@@ -227,7 +227,9 @@ function startLoop() {
   const hasRVFC = 'requestVideoFrameCallback' in HTMLVideoElement.prototype;
   const onF = (now, meta) => {
     if (source) {
-      const t = meta && meta.mediaTime != null ? meta.mediaTime : vid.currentTime;
+      let t;
+      if (source === 'cam') { const ms = meta && (meta.captureTime || meta.presentationTime || meta.expectedDisplayTime) || now || performance.now(); t = ms / 1000; }
+      else t = meta && meta.mediaTime != null ? meta.mediaTime : vid.currentTime;
       if (t !== lastT && vid.readyState >= 2) { frame(t); }
     }
     if (hasRVFC) vid.requestVideoFrameCallback(onF); else requestAnimationFrame(() => onF(performance.now(), null));
@@ -254,8 +256,9 @@ function fpsOf() { if (fpsArr.length < 5) return 0; const s = fpsArr.slice().sor
 // ---------- 색 ----------
 function hsv(r, g, b) { const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn; let h = 0; if (d) { if (mx === r) h = ((g - b) / d) % 6; else if (mx === g) h = (b - r) / d + 2; else h = (r - g) / d + 4; h *= 60; if (h < 0) h += 360; } return [h, mx ? d / mx : 0, mx / 255]; }
 let BC = null; // 공 색 판정 기준
+let BV = [0.5, 0.5, -1];
 function setBallColor(c) {
-  S.ballCol = c; const [h, s, v] = hsv(c[0], c[1], c[2]);
+  S.ballCol = c; { const m = (c[0] + c[1] + c[2]) / 3; let v = [c[0] - m, c[1] - m, c[2] - m]; const L = Math.hypot(...v) || 1; BV = v.map(x => x / L); } const [h, s, v] = hsv(c[0], c[1], c[2]);
   BC = { h, s, v, white: s < 0.25 };
 }
 if (S.ballCol) setBallColor(S.ballCol);
@@ -264,10 +267,10 @@ function ballLike(d, i) {
   const mx = r > g ? (r > b ? r : b) : (g > b ? g : b), mn = r < g ? (r < b ? r : b) : (g < b ? g : b), dd = mx - mn;
   const v = mx / 255;
   if (BC.white) return v > 0.78 && (mx ? dd / mx : 0) < 0.22;
-  if (v < BC.v * 0.38 || !mx) return false;
-  const s = dd / mx; if (s < Math.max(0.22, BC.s * 0.42)) return false;
+  if (v < BC.v * 0.45 || !mx) return false;
+  const s = dd / mx; if (s < Math.max(0.34, BC.s * 0.58)) return false;
   let h; if (mx === r) h = ((g - b) / dd) % 6; else if (mx === g) h = (b - r) / dd + 2; else h = (r - g) / dd + 4; h *= 60; if (h < 0) h += 360;
-  let dh = Math.abs(h - BC.h); if (dh > 180) dh = 360 - dh; return dh <= 24;
+  let dh = Math.abs(h - BC.h); if (dh > 180) dh = 360 - dh; return dh <= 18;
 }
 const sat = (d, i) => { const r = d[i], g = d[i + 1], b = d[i + 2]; const mx = Math.max(r, g, b), mn = Math.min(r, g, b); return [mx ? (mx - mn) / mx : 0, mx / 255]; };
 
@@ -373,7 +376,7 @@ function runChecks() {
     if (curFrame) {
       const tr = teeRatio(curFrame.d); if (tr > 0.45) add('ok', '티 위의 공이 잘 보여요'); else add('bad', '티 위의 공이 잘 안 보여요 — 공을 다시 찍어주세요');
       clutter = findClutter(curFrame.d);
-      const big = clutter.filter(c => c.n >= ballArea() * 0.3);
+      clutter = clutter.filter(c => c.n >= Math.max(5, ballArea() * 0.25) && c.n <= ballArea() * 16); const big = clutter;
       if (!big.length) add('ok', '날아가는 구간에 공과 비슷한 색 물체가 없어요');
       else add('warn', `공과 비슷한 색 물체 ${big.length}개 (빨간 네모). 가만히 있으면 괜찮지만 움직이면 오류가 나요`);
     }
@@ -459,8 +462,11 @@ function analyze() {
     const d = fr[k].d; m.fill(0);
     for (let p = 0; p < W * H; p++) {
       if (!roiOK[p]) continue; const i = p * 4;
-      const df = Math.abs(d[i] - bg[i]) + Math.abs(d[i + 1] - bg[i + 1]) + Math.abs(d[i + 2] - bg[i + 2]);
-      if (df > 60 && ballLike(d, i)) m[p] = 1;
+      const dr = d[i] - bg[i], dg = d[i + 1] - bg[i + 1], db = d[i + 2] - bg[i + 2];
+      const df = Math.abs(dr) + Math.abs(dg) + Math.abs(db); if (df < 30) continue;
+      const shift = (dr * BV[0] + dg * BV[1] + db * BV[2]);   // 공 색 방향으로 얼마나 바뀌었나
+      const nrm = Math.hypot(dr, dg, db);
+      if ((shift > 16 && shift > nrm * 0.75) || (df > 60 && ballLike(d, i))) m[p] = 1;
     }
     for (const c of comps(m, 40)) {
       if (c.n < Math.max(5, A * 0.2) || c.n > A * 16) continue;
@@ -495,11 +501,11 @@ function analyze() {
   // 거짓 신호(공이 그대로 있음) 확인
   if (curFrame && teeRatio(curFrame.d) > base * 0.7 && (!best || best.pts.length < 3)) { state = 'armed'; ring.length = 0; lowN = 0; updBig(); return; }
   let res;
-  if (!best || best.pts.length < 3) res = { ok: false, why: best ? '공이 화면에 2프레임 이하로만 찍혔어요 (화면 밖으로 너무 빨리 나감)' : '공의 궤적을 찾지 못했어요' };
+  if (!best || best.pts.length < 2 || (best.pts.length === 2 && best.f.rms > 0.05)) res = { ok: false, why: best ? '공이 화면에 너무 짧게 찍혔어요 (화면 밖으로 빨리 나감)' : '공의 궤적을 찾지 못했어요' };
   else {
     const { vx, vy, rms } = best.f, n = best.pts.length;
     const ev = Math.hypot(vx, vy) * 3.6, la = Math.atan2(vy, vx) * 180 / Math.PI;
-    const conf = n >= 4 && rms < 0.08 ? 'hi' : n >= 3 && rms < 0.14 ? 'mid' : 'lo';
+    const conf = n >= 4 && rms < 0.08 ? 'hi' : (n >= 3 && rms < 0.14) || (n === 2 && rms < 0.05) ? 'mid' : 'lo';
     res = { ok: true, ev, la, n, rms, conf, pts: best.pts };
   }
   lastRes = res; track = res.ok ? res.pts : null; showRes(res);
@@ -556,7 +562,7 @@ function draw() {
     }
   }
   if (STEP === 2 && tapIdx >= 0) { og.fillStyle = 'rgba(0,0,0,.55)'; og.fillRect(R.x, R.y + R.h - 34, R.w, 34); og.fillStyle = '#ffe066'; og.font = "800 16px 'Gothic A1'"; og.fillText(`「${PT_NAMES[tapIdx]}」을(를) 눌러주세요`, R.x + 12, R.y + R.h - 12); }
-  if (STEP === 3) { og.strokeStyle = '#ff3b3b'; clutter.forEach(c => { if (c.n < ballArea() * 0.3) return; const a = P(c.x0 - 3, c.y0 - 3), b = P(c.x1 + 3, c.y1 + 3); og.strokeRect(a[0], a[1], b[0] - a[0], b[1] - a[1]); }); }
+  if (STEP === 3) { og.strokeStyle = '#ff3b3b'; clutter.forEach(c => { const a = P(c.x0 - 3, c.y0 - 3), b = P(c.x1 + 3, c.y1 + 3); og.strokeRect(a[0], a[1], b[0] - a[0], b[1] - a[1]); }); }
   if (STEP === 4 && track) { og.fillStyle = '#2ecc71'; og.strokeStyle = '#2ecc71'; og.beginPath(); track.forEach((p, i) => { const [x, y] = P(p.px, p.py); i ? og.lineTo(x, y) : og.moveTo(x, y); }); og.stroke(); track.forEach(p => { const [x, y] = P(p.px, p.py); og.beginPath(); og.arc(x, y, 5, 0, Math.PI * 2); og.fill(); }); }
 }
 addEventListener('resize', draw);
