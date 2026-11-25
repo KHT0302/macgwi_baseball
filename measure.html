@@ -128,12 +128,19 @@
     </div>
     <!-- ④ 측정 -->
     <div class="pane" data-pane="4">
+      <div class="card"><h3>체험존 연결</h3>
+        <div class="row" style="align-items:center"><span style="font-size:13px;color:#b9c2d6;flex:none">방 코드</span><input id="room" maxlength="8" placeholder="노트북 화면의 코드" style="flex:1;font-family:'Saira Condensed';font-weight:800;font-size:24px;padding:4px 8px;border-radius:4px;border:2px solid #33405e;width:100px"><button id="roomGo" style="flex:none">연결</button></div>
+        <p id="linkTx" class="tip" style="margin-top:6px">-</p>
+        <label class="tip" style="display:flex;gap:6px;align-items:center;margin-top:4px"><input type="checkbox" id="autoSend" checked> 측정값을 체험존으로 자동 보내기 (신뢰도 보통 이상)</label>
+      </div>
       <div class="row"><button class="main" id="armBtn">타격 준비</button></div>
       <label class="tip" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="autoRearm" checked> 공을 다시 올리면 자동으로 준비</label>
       <div class="card" id="res"><h3 id="resT">측정 결과</h3>
         <div class="v"><div><small>타구속도</small><b class="num" id="rEv">-</b><em>km/h</em></div><div><small>발사각</small><b class="num" id="rLa">-</b><em>°</em></div></div>
         <div class="cf" id="rCf"></div>
         <p class="tip" id="rNote" style="margin-top:4px"></p>
+        <p id="sendTx" style="margin-top:4px;font-size:13px;font-weight:800"></p>
+        <div class="row" style="margin-top:6px"><button id="sendBtn" style="display:none">이 값 보내기</button></div>
       </div>
       <div class="card" id="fileCtl4" style="display:none"><h3>영상 시험</h3>
         <div class="row"><button id="playSlow">0.25배속 재생</button><button id="pauseBtn">멈춤</button></div></div>
@@ -496,16 +503,19 @@ function analyze() {
     res = { ok: true, ev, la, n, rms, conf, pts: best.pts };
   }
   lastRes = res; track = res.ok ? res.pts : null; showRes(res);
+  if (res.ok && res.conf !== 'lo' && $('autoSend').checked) sendHit(res);
   state = 'result'; okN = 0; updBig(); draw();
   window.__results = (window.__results || []).concat([{ ok: res.ok, ev: res.ev, la: res.la, n: res.n, rms: res.rms, conf: res.conf, cands: cands.length, trigT }]);
 }
 function showRes(r) {
   $('res').style.display = 'block';
+  $('sendTx').textContent = ''; $('sendBtn').style.display = 'none';
   if (!r.ok) { $('rEv').textContent = '-'; $('rLa').textContent = '-'; $('rCf').className = 'cf lo'; $('rCf').textContent = '측정 실패 · ' + r.why; $('rNote').textContent = '다시 치거나 직접 입력해 주세요. 계속 실패하면 ③ 점검을 다시 해요.'; }
   else {
     $('rEv').textContent = Math.round(r.ev); $('rLa').textContent = Math.round(r.la);
     $('rCf').className = 'cf ' + r.conf; $('rCf').textContent = '신뢰도 ' + { hi: '높음', mid: '보통', lo: '낮음 — 이 값은 쓰지 마세요' }[r.conf] + ` · 공 ${r.n}개 프레임에서 찾음`;
     $('rNote').textContent = '화면의 초록 점이 실제 공 위치와 맞는지 확인해 주세요.';
+    $('sendBtn').style.display = 'block'; $('sendBtn').onclick = () => sendHit(r);
   }
   HIST.unshift(r); $('hist').innerHTML = HIST.slice(0, 20).map((h, i) => `<div><span>${HIST.length - i}번</span><span class="num">${h.ok ? Math.round(h.ev) + 'km/h · ' + Math.round(h.la) + '°' : '실패'}</span><span class="cf ${h.ok ? h.conf : 'lo'}">${h.ok ? { hi: '높음', mid: '보통', lo: '낮음' }[h.conf] : '-'}</span></div>`).join('');
 }
@@ -550,6 +560,44 @@ function draw() {
   if (STEP === 4 && track) { og.fillStyle = '#2ecc71'; og.strokeStyle = '#2ecc71'; og.beginPath(); track.forEach((p, i) => { const [x, y] = P(p.px, p.py); i ? og.lineTo(x, y) : og.moveTo(x, y); }); og.stroke(); track.forEach(p => { const [x, y] = P(p.px, p.py); og.beginPath(); og.arc(x, y, 5, 0, Math.PI * 2); og.fill(); }); }
 }
 addEventListener('resize', draw);
+// ---------- 체험존 연결 (Firebase Realtime Database) ----------
+const DB = new URLSearchParams(location.search).get('db') || 'https://macgwi-baseball-class-default-rtdb.asia-southeast1.firebasedatabase.app';
+let ROOM = ''; try { ROOM = localStorage.getItem(KEY + '_room') || ''; } catch (e) {}
+$('room').value = ROOM;
+let es = null, EXS = null;
+function linkTx(t, c) { $('linkTx').textContent = t; $('linkTx').style.color = c || ''; }
+function connect() {
+  if (es) { es.close(); es = null; } EXS = null;
+  if (!ROOM) { linkTx('노트북 체험존 화면의 방 코드를 넣어주세요', '#ffe066'); return; }
+  linkTx('연결 중…');
+  try {
+    es = new EventSource(`${DB}/rooms/${encodeURIComponent(ROOM)}/state.json`);
+    const on = e => { let m; try { m = JSON.parse(e.data); } catch (x) { return; } if (m && m.path === '/') { EXS = m.data; showExs(); } };
+    es.addEventListener('put', on); es.addEventListener('patch', on);
+    es.onopen = () => { if (!EXS) linkTx(`방 ${ROOM} 연결됨 · 체험존 화면 응답 기다리는 중`, '#7ee2a8'); };
+    es.onerror = () => linkTx('연결 안 됨 — 인터넷을 확인해 주세요', '#ff8a8a');
+  } catch (e) { linkTx('연결할 수 없어요', '#ff8a8a'); }
+}
+function showExs() {
+  if (!EXS) { linkTx(`방 ${ROOM} 연결됨 · 체험존 화면이 아직 없어요 (코드 확인)`, '#ffe066'); return; }
+  const old = EXS.ts && Date.now() - EXS.ts > 10 * 60 * 1000;
+  const ph = { reg: '선수 등록 중', intro: '입장 중', wait: '타격 대기 ✔', swing: '타격 연출 중', result: '결과 보는 중', after: '다음 준비 중', final: '최종 카드', top: 'TOP 10' }[EXS.phase] || EXS.phase;
+  linkTx(`방 ${ROOM} 연결됨 · 체험존: ${EXS.name ? EXS.name + ' · ' : ''}${ph}${old ? ' (오래된 정보)' : ''}`, EXS.phase === 'wait' ? '#7ee2a8' : '#cfd6e2');
+}
+async function sendHit(r) {
+  if (!ROOM) { $('sendTx').textContent = '방 코드가 없어 보내지 못했어요'; $('sendTx').style.color = '#ff8a8a'; return; }
+  const h = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), ev: Math.round(r.ev * 10) / 10, la: Math.round(r.la * 10) / 10, conf: r.conf, n: r.n, ts: Date.now() };
+  $('sendTx').textContent = '보내는 중…'; $('sendTx').style.color = '#cfd6e2';
+  try {
+    const res = await fetch(`${DB}/rooms/${encodeURIComponent(ROOM)}/hit.json`, { method: 'PUT', body: JSON.stringify(h) });
+    if (!res.ok) throw new Error(res.status);
+    const ready = EXS && EXS.phase === 'wait';
+    $('sendTx').textContent = ready ? '체험존으로 보냈어요 ✔' : '보냈지만 체험존이 타격 대기 상태가 아니에요 (무시될 수 있어요)';
+    $('sendTx').style.color = ready ? '#7ee2a8' : '#ffe066';
+  } catch (e) { $('sendTx').textContent = '보내지 못했어요 (' + e.message + ') — 노트북에 직접 입력해 주세요'; $('sendTx').style.color = '#ff8a8a'; }
+}
+$('roomGo').onclick = () => { ROOM = $('room').value.trim().replace(/[^0-9A-Za-z]/g, ''); $('room').value = ROOM; try { localStorage.setItem(KEY + '_room', ROOM); } catch (e) {} connect(); };
+connect();
 buildGeo(); renderPts();
 // 시험용
 window.__m = { openFile, setPts(pts, teeH) { S.pts = pts.map(p => p && { x: p[0], y: p[1], snap: true }); if (teeH) S.teeH = teeH; tapIdx = S.pts.findIndex(q => !q); buildGeo(); renderPts(); }, tapAt(i, x, y) { tapIdx = i; const r = ov.getBoundingClientRect(), d = dispRect(); onTap({ clientX: r.left + d.x + x * d.w, clientY: r.top + d.y + y * d.h }); }, setStep, arm, state: () => state, geo: () => GEO, S: () => S, teeRatio: () => curFrame ? teeRatio(curFrame.d) : -1, base: () => base };
