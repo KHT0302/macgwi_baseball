@@ -640,6 +640,7 @@ function alignCheck() {
 // ---------- 체험존 연결 (Firebase Realtime Database) ----------
 const DB = new URLSearchParams(location.search).get('db') || 'https://macgwi-baseball-class-default-rtdb.asia-southeast1.firebasedatabase.app';
 let ROOM = ''; try { ROOM = localStorage.getItem(KEY + '_room') || ''; } catch (e) {}
+{ const qr = new URLSearchParams(location.search).get('room'); if (qr) { ROOM = qr.replace(/[^0-9A-Za-z]/g, ''); try { localStorage.setItem(KEY + '_room', ROOM); } catch (e) {} } }
 if (!ROOM) ROOM = '1234';
 $('room').value = ROOM;
 let es = null, EXS = null;
