@@ -149,7 +149,9 @@
         <div class="v"><div><small>타구속도</small><b class="num" id="rEv">-</b><em>km/h</em></div><div><small>발사각</small><b class="num" id="rLa">-</b><em>°</em></div></div>
         <div class="cf" id="rCf"></div>
         <p class="tip" id="rNote" style="margin-top:4px"></p>
+        <p id="diagTx" class="tip" style="margin-top:4px;color:#9fb3cf"></p>
         <p id="sendTx" style="margin-top:4px;font-size:13px;font-weight:800"></p>
+        <div class="row" style="margin-top:6px"><button id="clipBtn" style="display:none">이 타격 영상 저장·보내기 (분석용)</button></div>
         <div class="row" style="margin-top:6px"><button id="sendBtn" style="display:none">이 값 보내기</button></div>
       </div>
       <div class="card" id="fileCtl4" style="display:none"><h3>영상 시험</h3>
@@ -430,9 +432,31 @@ function teeRatio(d) {
 // ---------- 측정 ----------
 let state = 'idle', base = 0, baseArr = [], lowN = 0, cap = [], trigT = 0, okN = 0, lastRes = null, track = null;
 const HIST = [];
+// ---------- 타격 영상 저장 (분석용) ----------
+let rec = null, recChunks = [], lastClip = null, recT = 0;
+function clipStart() {
+  if (source !== 'cam' || !stream || !window.MediaRecorder) return;
+  try { if (rec && rec.state === 'recording') rec.stop(); } catch (e) {}
+  const mt = ['video/mp4', 'video/webm;codecs=vp9', 'video/webm'].find(t => MediaRecorder.isTypeSupported(t)) || '';
+  try { recChunks = []; rec = new MediaRecorder(stream, mt ? { mimeType: mt, videoBitsPerSecond: 8e6 } : undefined); rec.ondataavailable = e => { if (e.data && e.data.size) recChunks.push(e.data); }; rec.start(); recT = Date.now(); } catch (e) { rec = null; }
+}
+function clipStop() {
+  if (!rec || rec.state !== 'recording') return;
+  const r = rec; r.onstop = () => { const type = r.mimeType || 'video/mp4'; lastClip = new Blob(recChunks, { type }); $('clipBtn').style.display = 'block'; }; try { r.stop(); } catch (e) {}
+}
+setInterval(() => { if (rec && rec.state === 'recording' && (state === 'armed') && Date.now() - recT > 15000) clipStart(); }, 2000);
+$('clipBtn').onclick = async () => {
+  if (!lastClip) return;
+  const d = new Date(), p2 = n => String(n).padStart(2, '0');
+  const r = lastRes || {}; const name = `SWING_${d.getFullYear()}${p2(d.getMonth() + 1)}${p2(d.getDate())}_${p2(d.getHours())}${p2(d.getMinutes())}${p2(d.getSeconds())}_${r.ok ? Math.round(r.ev) + 'kmh_' + Math.round(r.la) + 'deg' : 'fail'}.${lastClip.type.includes('mp4') ? 'mp4' : 'webm'}`;
+  const file = new File([lastClip], name, { type: lastClip.type });
+  const setup = new File([JSON.stringify({ pts: S.pts, teeH: S.teeH, ballCol: S.ballCol, ballRpx: S.ballRpx, hfov: S.hfov, dir: S.dir, W, H, res: lastRes && { ok: r.ok, ev: r.ev, la: r.la, conf: r.conf, diag: r.diag } })], name.replace(/\.\w+$/, '_설정.json'), { type: 'application/json' });
+  try { if (navigator.canShare && navigator.canShare({ files: [file, setup] })) { await navigator.share({ files: [file, setup] }); return; } } catch (e) { if (e && e.name === 'AbortError') return; }
+  const a = document.createElement('a'); a.href = URL.createObjectURL(file); a.download = name; a.click();
+};
 function arm() {
   if (!GEO || !BC || !S.pts[3]) { setStep(2); return; }
-  state = 'arming'; baseArr = []; lowN = 0; track = null; updBig();
+  state = 'arming'; baseArr = []; lowN = 0; track = null; updBig(); clipStart();
 }
 function disarm() { state = 'idle'; ring.forEach(f => pool.push(f.d)); ring.length = 0; cap.forEach(f => pool.push(f.d)); cap = []; updBig(); }
 $('armBtn').onclick = () => { if (state === 'idle' || state === 'result') arm(); else disarm(); };
@@ -518,13 +542,16 @@ function analyze() {
     const conf = n >= 4 && rms < 0.08 ? 'hi' : (n >= 3 && rms < 0.14) || (n === 2 && rms < 0.05) ? 'mid' : 'lo';
     res = { ok: true, ev, la, n, rms, conf, pts: best.pts };
   }
-  lastRes = res; track = res.ok ? res.pts : null; showRes(res);
+  res.diag = { fps: fpsOf(), cands: cands.length, frames: cands.length ? new Set(cands.map(c => c.k)).size : 0, pts: best ? best.pts.length : 0 };
+  lastRes = res; track = res.ok ? res.pts : null; showRes(res); clipStop();
   if (res.ok && res.conf !== 'lo' && $('autoSend').checked) sendHit(res);
   state = 'result'; okN = 0; updBig(); draw();
   window.__results = (window.__results || []).concat([{ ok: res.ok, ev: res.ev, la: res.la, n: res.n, rms: res.rms, conf: res.conf, cands: cands.length, trigT }]);
 }
 function showRes(r) {
   $('res').style.display = 'block';
+  const g = r.diag || {};
+  $('diagTx').innerHTML = `진단 · ${g.fps || '?'}fps · 공 사라짐 감지 ✔ · 공 후보 ${g.cands || 0}개(${g.frames || 0}프레임) · 궤적 ${g.pts || 0}점` + (!r.ok ? (g.cands === 0 ? '<br>→ 공을 하나도 못 찾았어요: 공 색을 다시 찍거나, 날아가는 쪽이 화면에 들어오는지 확인' : g.pts < 2 ? '<br>→ 후보는 있는데 궤적이 안 이어져요: 카메라를 더 뒤로, 직각 확인' : '<br>→ 공이 너무 빨리 화면 밖으로 나가요: 카메라를 더 뒤로') : '');
   $('sendTx').textContent = ''; $('sendBtn').style.display = 'none';
   if (!r.ok) { $('rEv').textContent = '-'; $('rLa').textContent = '-'; $('rCf').className = 'cf lo'; $('rCf').textContent = '측정 실패 · ' + r.why; $('rNote').textContent = '다시 치거나 직접 입력해 주세요. 계속 실패하면 ③ 점검을 다시 해요.'; }
   else {
