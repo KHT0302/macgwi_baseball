@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>BSPN 타구 측정 · 카메라 1대</title>
+<link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Saira+Condensed:wght@600;700;800&family=Gothic+A1:wght@500;700;800&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%;background:#0b0f19;color:#fff;font-family:'Gothic A1',sans-serif;overflow:hidden}
+  .num{font-family:'Saira Condensed',sans-serif;font-weight:800}
+  header{height:52px;display:flex;align-items:center;gap:14px;padding:0 14px;background:#121a2e;border-bottom:3px solid #c8102e}
+  header h1{font-family:'Black Han Sans';font-weight:400;font-size:21px;letter-spacing:1px;white-space:nowrap}
+  header h1 em{font-style:normal;background:#c8102e;padding:0 6px;margin-right:6px;font-family:'Saira Condensed';font-weight:800}
+  .steps{display:flex;gap:4px;margin-left:auto}
+  .steps button{background:#1b2742;border:1px solid #2b3a5c;color:#9fb3cf;font-family:'Gothic A1';font-weight:800;font-size:13px;padding:7px 12px;border-radius:4px}
+  .steps button.on{background:#2094c4;color:#fff;border-color:#2094c4}
+  .steps button.done{color:#7ee2a8}
+  #fps{font-size:13px;color:#9fb3cf;min-width:64px;text-align:right}
+  main{display:flex;height:calc(100% - 52px)}
+  #view{flex:1;position:relative;background:#000;overflow:hidden;touch-action:none}
+  #vid{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
+  #ov{position:absolute;inset:0;width:100%;height:100%}
+  #empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px;color:#8d97ad;font-weight:800}
+  #big{position:absolute;left:50%;top:14px;transform:translateX(-50%);background:rgba(18,26,46,.92);border:2px solid #2b3a5c;padding:8px 22px;font-family:'Black Han Sans';font-size:26px;letter-spacing:1px;border-radius:4px;white-space:nowrap;pointer-events:none;display:none}
+  #big.armed{border-color:#2ecc71;color:#7ee2a8;animation:pulse 1.4s infinite}
+  #big.warn{border-color:#f5c400;color:#ffe066}
+  #big.bad{border-color:#e0242c;color:#ff8a8a}
+  @keyframes pulse{50%{opacity:.6}}
+  aside{width:340px;background:#0f1524;border-left:1px solid #1f2a44;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:10px}
+  .pane{display:none;flex-direction:column;gap:10px}.pane.on{display:flex}
+  .card{background:#151d31;border:1px solid #23304d;border-radius:6px;padding:10px 12px}
+  .card h3{font-family:'Black Han Sans';font-weight:400;font-size:17px;margin-bottom:6px}
+  .card p,.card li{font-size:13px;color:#b9c2d6;line-height:1.55}
+  .card ul{padding-left:16px}
+  button{font-family:'Gothic A1';font-weight:800;font-size:14px;color:#fff;background:#1f2940;border:1px solid #33405e;border-radius:5px;padding:10px 12px;cursor:pointer}
+  button:active{transform:scale(.97)}
+  button.main{background:#c8102e;border-color:#ff5a5f;font-size:17px;padding:13px}
+  button.on{background:#2094c4;border-color:#2094c4}
+  .row{display:flex;gap:6px;flex-wrap:wrap}.row>button{flex:1}
+  .pt{display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid #23304d;font-size:14px;font-weight:800}
+  .pt:last-child{border-bottom:0}
+  .pt .dot{width:14px;height:14px;border-radius:50%;border:2px solid #5c6884;flex:none}
+  .pt.ok .dot{background:#2ecc71;border-color:#2ecc71}
+  .pt.cur{color:#ffe066}.pt.cur .dot{border-color:#ffe066}
+  .pt span{flex:1}
+  .pt button{padding:5px 9px;font-size:12px}
+  .chk{display:flex;gap:8px;font-size:13px;padding:5px 0;line-height:1.45}
+  .chk b{flex:none;width:20px;text-align:center}
+  .chk.ok b{color:#2ecc71}.chk.warn b{color:#f5c400}.chk.bad b{color:#ff5a5f}
+  .chk span{color:#cfd6e2}
+  #res{display:none}
+  #res .v{display:flex;gap:8px}
+  #res .v div{flex:1;background:#0b1222;border-radius:5px;padding:6px 8px;text-align:center}
+  #res .v small{display:block;font-size:12px;color:#9fb3cf;font-weight:800}
+  #res .v b{font-size:44px;line-height:1.05}
+  #res .v em{font-size:16px;font-style:normal;color:#9fb3cf;margin-left:2px}
+  #res .cf{margin-top:8px;font-size:13px;font-weight:800}
+  .cf.hi{color:#2ecc71}.cf.mid{color:#f5c400}.cf.lo{color:#ff5a5f}
+  #hist{font-size:13px;color:#cfd6e2}
+  #hist div{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #1f2a44}
+  .sw{display:inline-block;width:16px;height:16px;border-radius:50%;vertical-align:middle;border:2px solid #fff;margin-left:6px}
+  #err{display:none;color:#ff8a8a;font-size:13px}
+  input[type=range]{width:100%}
+  .tip{font-size:12px;color:#8d97ad;line-height:1.5}
+  @media (max-width:900px){aside{width:300px}header h1{font-size:17px}.steps button{padding:6px 8px;font-size:12px}}
+</style>
+</head>
+<body>
+<header>
+  <h1><em>BSPN</em>타구 측정 · 카메라 1대</h1>
+  <div class="steps">
+    <button data-step="1" class="on">① 카메라</button>
+    <button data-step="2">② 위치 맞추기</button>
+    <button data-step="3">③ 점검</button>
+    <button data-step="4">④ 측정</button>
+  </div>
+  <div id="fps">-</div>
+</header>
+<main>
+  <div id="view">
+    <video id="vid" playsinline muted></video>
+    <canvas id="ov"></canvas>
+    <div id="empty"><div style="font-size:40px">📷</div><div>오른쪽에서 카메라를 켜주세요</div></div>
+    <div id="big"></div>
+  </div>
+  <aside>
+    <!-- ① 카메라 -->
+    <div class="pane on" data-pane="1">
+      <div class="card"><h3>카메라 켜기</h3>
+        <div class="row"><button class="main" id="camOn">카메라 켜기</button></div>
+        <div class="row" style="margin-top:6px"><button id="fileBtn">영상 파일로 시험</button><button id="camOff">끄기</button></div>
+        <input type="file" id="fileIn" accept="video/*" style="display:none">
+        <p id="spec" style="margin-top:6px"></p><p id="err"></p>
+      </div>
+      <div class="card"><h3>설치 기준</h3><ul>
+        <li><b>카메라는 타자 정면 쪽</b>에 세우고, 공이 날아가는 선과 <b>직각</b>이 되게 해요.</li>
+        <li>티에서 3~4m 떨어지고, 높이는 1m 정도. 삼각대로 고정해요.</li>
+        <li>콘 3개: <b>티 바로 밑(0m) · 1m · 2m</b>. 공이 날아가는 방향으로 일직선.</li>
+        <li>화면에 <b>티부터 3m 이상</b> 날아가는 구간이 보여야 해요.</li>
+        <li><b>노란 공</b>을 쓰고, 공이 날아가는 쪽 배경에서 노란·주황 물건은 치워요.</li>
+        <li>타자가 카메라와 공 사이를 가리지 않게 해요.</li></ul></div>
+    </div>
+    <!-- ② 위치 맞추기 -->
+    <div class="pane" data-pane="2">
+      <div class="card"><h3>화면에서 눌러 맞추기</h3>
+        <p id="tapHint" style="color:#ffe066;font-weight:800;margin-bottom:4px">-</p>
+        <div id="pts"></div>
+        <div class="row" style="margin-top:6px"><button id="resetPts">처음부터 다시</button></div>
+        <p class="tip" style="margin-top:6px">누른 곳 근처의 콘·공을 자동으로 찾아 맞춰요. 잘못 잡히면 해당 줄의 "다시"를 눌러요.</p>
+      </div>
+      <div class="card"><h3>티 높이</h3>
+        <div class="row" id="teeRow"></div>
+        <p id="teeChk" class="tip" style="margin-top:6px"></p>
+      </div>
+      <div class="card" id="fileCtl" style="display:none"><h3>영상 위치</h3>
+        <input type="range" id="seek" min="0" max="1000" value="0">
+        <div class="row" style="margin-top:6px"><button id="fPrev">◀ 1프레임</button><button id="fNext">1프레임 ▶</button></div>
+      </div>
+      <div class="row"><button class="main" id="to3">다음: 점검 ▶</button></div>
+    </div>
+    <!-- ③ 점검 -->
+    <div class="pane" data-pane="3">
+      <div class="card"><h3>측정 전 점검</h3><div id="checks"></div>
+        <div class="row" style="margin-top:8px"><button id="runChk">다시 점검</button></div></div>
+      <div class="card"><h3>빨간 표시가 보이면</h3><p>화면의 빨간 네모는 <b>공과 비슷한 색</b>이에요. 가만히 있는 물건은 배경으로 지워지니 괜찮지만, <b>움직이는 것</b>(사람, 흔들리는 그물)은 오류가 날 수 있어요. 가능하면 치우거나 카메라 각도를 바꿔요.</p></div>
+      <div class="row"><button class="main" id="to4">다음: 측정 ▶</button></div>
+    </div>
+    <!-- ④ 측정 -->
+    <div class="pane" data-pane="4">
+      <div class="row"><button class="main" id="armBtn">타격 준비</button></div>
+      <label class="tip" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="autoRearm" checked> 공을 다시 올리면 자동으로 준비</label>
+      <div class="card" id="res"><h3 id="resT">측정 결과</h3>
+        <div class="v"><div><small>타구속도</small><b class="num" id="rEv">-</b><em>km/h</em></div><div><small>발사각</small><b class="num" id="rLa">-</b><em>°</em></div></div>
+        <div class="cf" id="rCf"></div>
+        <p class="tip" id="rNote" style="margin-top:4px"></p>
+      </div>
+      <div class="card" id="fileCtl4" style="display:none"><h3>영상 시험</h3>
+        <div class="row"><button id="playSlow">0.25배속 재생</button><button id="pauseBtn">멈춤</button></div></div>
+      <div class="card"><h3>기록</h3><div id="hist"><p class="tip">아직 없음</p></div></div>
+      <div class="card"><h3>알아둘 점</h3><p>카메라 1대는 <b>옆에서 본 속도와 각도</b>를 재요. 공이 비스듬히(좌·우로) 날아가면 속도가 실제보다 조금 작게 나와요. 신뢰도가 "낮음"이면 그 값은 쓰지 말고 다시 치거나 직접 입력해요.</p></div>
+    </div>
+  </aside>
+</main>
+<script>
+(() => {
+'use strict';
+const $ = id => document.getElementById(id);
+const vid = $('vid'), ov = $('ov'), og = ov.getContext('2d');
+const work = document.createElement('canvas'), wg = work.getContext('2d', { willReadFrequently: true });
+let W = 640, H = 360;            // 분석 해상도
+let source = null, stream = null;
+const G = 9.8, BALL_R = 0.035;
+// ---------- 설정 (저장) ----------
+const KEY = 'bspn_measure_v1';
+let S = { pts: [null, null, null, null], teeH: 0.7, ballCol: null, ballRpx: 6 };   // pts: 0m,1m,2m 콘 바닥, 공 (분석 좌표 0~1 정규화)
+try { Object.assign(S, JSON.parse(localStorage.getItem(KEY) || '{}')); } catch (e) {}
+const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} };
+const PT_NAMES = ['0m 콘 (티 바로 밑)', '1m 콘', '2m 콘', '티 위의 공'];
+let tapIdx = S.pts.findIndex(p => !p); if (tapIdx < 0) tapIdx = -1;
+
+// ---------- 단계 ----------
+let STEP = 1;
+function setStep(n) {
+  STEP = n;
+  document.querySelectorAll('[data-step]').forEach(b => b.classList.toggle('on', +b.dataset.step === n));
+  document.querySelectorAll('[data-pane]').forEach(p => p.classList.toggle('on', +p.dataset.pane === n));
+  if (n === 2) { if (tapIdx < 0 && S.pts.some(p => !p)) tapIdx = S.pts.findIndex(p => !p); renderPts(); }
+  if (n === 3) runChecks();
+  if (n !== 4 && state !== 'idle') disarm();
+  updBig(); draw();
+}
+document.querySelectorAll('[data-step]').forEach(b => b.onclick = () => setStep(+b.dataset.step));
+$('to3').onclick = () => setStep(3); $('to4').onclick = () => setStep(4);
+
+// ---------- 카메라 / 파일 ----------
+async function camOn() {
+  $('err').style.display = 'none';
+  try {
+    stopAll();
+    stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 60 } } });
+    let tr = stream.getVideoTracks()[0], st = tr.getSettings();
+    if ((st.frameRate || 0) < 50) { try { await tr.applyConstraints({ width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { min: 50, ideal: 60 } }); } catch (e) {} st = tr.getSettings(); }
+    vid.srcObject = stream; await vid.play(); source = 'cam';
+    $('spec').textContent = `${st.width || '?'}×${st.height || '?'} · ${Math.round(st.frameRate || 0)}fps` + ((st.frameRate || 0) < 50 ? ' — 60fps가 안 돼요. 정확도가 떨어져요' : '');
+    started();
+  } catch (e) {
+    $('err').textContent = e && e.name === 'NotAllowedError' ? '카메라 권한이 거부됐어요. 주소창의 설정에서 카메라를 허용해 주세요.' : '카메라를 켤 수 없어요 (' + (e && e.name || '오류') + ')';
+    $('err').style.display = 'block';
+  }
+}
+function stopAll() { if (stream) stream.getTracks().forEach(t => t.stop()); stream = null; vid.pause(); vid.removeAttribute('src'); vid.srcObject = null; source = null; $('fileCtl').style.display = $('fileCtl4').style.display = 'none'; $('empty').style.display = 'flex'; disarm(); draw(); }
+function openFile(url) {
+  stopAll(); vid.srcObject = null; vid.src = url; vid.loop = false; source = 'file';
+  vid.onloadeddata = () => { vid.pause(); started(); $('fileCtl').style.display = $('fileCtl4').style.display = 'block'; $('spec').textContent = `영상 ${vid.videoWidth}×${vid.videoHeight}`; };
+}
+function started() {
+  $('empty').style.display = 'none';
+  W = Math.min(640, vid.videoWidth || 640); H = Math.round(W * (vid.videoHeight || 360) / (vid.videoWidth || 640));
+  work.width = W; work.height = H; pool.length = 0; ring.length = 0;
+  startLoop(); if (STEP === 1) setStep(2); else draw();
+}
+$('camOn').onclick = camOn; $('camOff').onclick = stopAll;
+$('fileBtn').onclick = () => $('fileIn').click();
+$('fileIn').onchange = () => { const f = $('fileIn').files[0]; if (f) openFile(URL.createObjectURL(f)); $('fileIn').value = ''; };
+$('seek').oninput = () => { if (source === 'file' && vid.duration) { vid.pause(); vid.currentTime = vid.duration * $('seek').value / 1000; } };
+const fstep = d => { if (source === 'file') { vid.pause(); vid.currentTime = Math.max(0, vid.currentTime + d / 60); } };
+$('fPrev').onclick = () => fstep(-1); $('fNext').onclick = () => fstep(1);
+$('playSlow').onclick = () => { if (source === 'file') { vid.playbackRate = 0.25; vid.play(); } };
+$('pauseBtn').onclick = () => { if (source === 'file') vid.pause(); };
+
+// ---------- 프레임 루프 ----------
+const pool = [], ring = [];          // 최근 프레임 (분석 좌표)
+const RING = 8;
+let lastT = -1, fpsArr = [], loopOn = false;
+function getBuf() { return pool.pop() || new Uint8ClampedArray(W * H * 4); }
+function grab() { wg.drawImage(vid, 0, 0, W, H); const d = wg.getImageData(0, 0, W, H).data; const b = getBuf(); b.set(d); return b; }
+function startLoop() {
+  if (loopOn) return; loopOn = true;
+  const hasRVFC = 'requestVideoFrameCallback' in HTMLVideoElement.prototype;
+  const onF = (now, meta) => {
+    if (source) {
+      const t = meta && meta.mediaTime != null ? meta.mediaTime : vid.currentTime;
+      if (t !== lastT && vid.readyState >= 2) { frame(t); }
+    }
+    if (hasRVFC) vid.requestVideoFrameCallback(onF); else requestAnimationFrame(() => onF(performance.now(), null));
+  };
+  if (hasRVFC) vid.requestVideoFrameCallback(onF); else requestAnimationFrame(() => onF(performance.now(), null));
+  // 파일이 멈춰 있을 때도 화면 갱신
+  vid.addEventListener('seeked', () => { if (source === 'file') { frame(vid.currentTime, true); } });
+}
+let curFrame = null;
+function frame(t, still) {
+  const dt = t - lastT;
+  if (lastT >= 0 && dt > 0 && dt < 0.2 && !still) { fpsArr.push(dt); if (fpsArr.length > 30) fpsArr.shift(); }
+  lastT = t;
+  const buf = grab();
+  if (curFrame && !ring.includes(curFrame) && !cap.includes(curFrame)) pool.push(curFrame.d);
+  curFrame = { t, d: buf };
+  if (source === 'file' && vid.duration) $('seek').value = Math.round(vid.currentTime / vid.duration * 1000);
+  const fps = fpsOf(); $('fps').textContent = fps ? fps + ' FPS' : '-';
+  process(curFrame, still);
+  draw();
+}
+function fpsOf() { if (fpsArr.length < 5) return 0; const s = fpsArr.slice().sort((a, b) => a - b); return Math.round(1 / s[s.length >> 1]); }
+
+// ---------- 색 ----------
+function hsv(r, g, b) { const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn; let h = 0; if (d) { if (mx === r) h = ((g - b) / d) % 6; else if (mx === g) h = (b - r) / d + 2; else h = (r - g) / d + 4; h *= 60; if (h < 0) h += 360; } return [h, mx ? d / mx : 0, mx / 255]; }
+let BC = null; // 공 색 판정 기준
+function setBallColor(c) {
+  S.ballCol = c; const [h, s, v] = hsv(c[0], c[1], c[2]);
+  BC = { h, s, v, white: s < 0.25 };
+}
+if (S.ballCol) setBallColor(S.ballCol);
+function ballLike(d, i) {
+  const r = d[i], g = d[i + 1], b = d[i + 2];
+  const mx = r > g ? (r > b ? r : b) : (g > b ? g : b), mn = r < g ? (r < b ? r : b) : (g < b ? g : b), dd = mx - mn;
+  const v = mx / 255;
+  if (BC.white) return v > 0.78 && (mx ? dd / mx : 0) < 0.22;
+  if (v < BC.v * 0.38 || !mx) return false;
+  const s = dd / mx; if (s < Math.max(0.22, BC.s * 0.42)) return false;
+  let h; if (mx === r) h = ((g - b) / dd) % 6; else if (mx === g) h = (b - r) / dd + 2; else h = (r - g) / dd + 4; h *= 60; if (h < 0) h += 360;
+  let dh = Math.abs(h - BC.h); if (dh > 180) dh = 360 - dh; return dh <= 24;
+}
+const sat = (d, i) => { const r = d[i], g = d[i + 1], b = d[i + 2]; const mx = Math.max(r, g, b), mn = Math.min(r, g, b); return [mx ? (mx - mn) / mx : 0, mx / 255]; };
+
+// ---------- 좌표 변환 (콘 3개로 원근 보정) ----------
+let GEO = null;
+function buildGeo() {
+  GEO = null; const P = S.pts; if (!P[0] || !P[1] || !P[2]) return;
+  const c0 = { x: P[0].x * W, y: P[0].y * H }, c1 = { x: P[1].x * W, y: P[1].y * H }, c2 = { x: P[2].x * W, y: P[2].y * H };
+  let dx = c2.x - c0.x, dy = c2.y - c0.y; const L = Math.hypot(dx, dy); if (L < 10) return; dx /= L; dy /= L;
+  let nx = dy, ny = -dx; if (ny > 0) { nx = -nx; ny = -ny; }
+  const s1 = (c1.x - c0.x) * dx + (c1.y - c0.y) * dy, s2 = L;
+  if (!(s1 > 3 && s2 > s1 + 3)) return;
+  const c = 1 / s1 - 2 / s2, a = c + 1 / s1;
+  GEO = { c0, dx, dy, nx, ny, a, c, s1, s2, dir: dx >= 0 ? 1 : -1 };
+  if (P[3]) { const b = toM(P[3].x * W, P[3].y * H); GEO.bX = b.X; GEO.bY = b.Y; GEO.bS = b.s; }
+}
+function toM(px, py) {
+  const g = GEO, s = (px - g.c0.x) * g.dx + (py - g.c0.y) * g.dy, h = (px - g.c0.x) * g.nx + (py - g.c0.y) * g.ny;
+  const den = g.c * s + 1; if (den <= 0.05) return { X: 99, Y: 0, s, h, k: 0 };
+  const k = g.a / (den * den); return { X: g.a * s / den, Y: h * k, s, h, k };
+}
+// 공 기준 좌표 (m): x = 날아가는 방향, y = 위
+function rel(px, py) { const m = toM(px, py); return { x: m.X - GEO.bX, y: m.Y - GEO.bY, s: m.s, h: m.h, k: m.k }; }
+
+// ---------- 눌러서 맞추기 (자동 맞춤) ----------
+function blobAt(d, cx, cy, R, test) {
+  // 누른 곳 근처에서 조건에 맞는 가장 가까운 픽셀 → 연결된 덩어리
+  let best = null, bd = 1e9;
+  for (let y = Math.max(0, cy - R); y < Math.min(H, cy + R); y++) for (let x = Math.max(0, cx - R); x < Math.min(W, cx + R); x++) {
+    if (test(d, (y * W + x) * 4)) { const q = (x - cx) ** 2 + (y - cy) ** 2; if (q < bd) { bd = q; best = [x, y]; } }
+  }
+  if (!best) return null;
+  const seen = new Uint8Array(W * H), st = [best[1] * W + best[0]]; seen[st[0]] = 1;
+  let n = 0, sx = 0, sy = 0, x0 = 1e9, x1 = -1, y0 = 1e9, y1 = -1, r = 0, g = 0, b = 0;
+  while (st.length && n < 6000) {
+    const p = st.pop(), x = p % W, y = (p / W) | 0; n++; sx += x; sy += y; x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y);
+    const i = p * 4; r += d[i]; g += d[i + 1]; b += d[i + 2];
+    for (const q of [p - 1, p + 1, p - W, p + W]) { const qx = q % W; if (q < 0 || q >= W * H || seen[q] || Math.abs(qx - x) > 1) continue; seen[q] = 1; if (test(d, q * 4) && Math.hypot(qx - cx, ((q / W) | 0) - cy) < R * 1.6) st.push(q); }
+  }
+  return { n, cx: sx / n, cy: sy / n, x0, x1, y0, y1, col: [r / n, g / n, b / n] };
+}
+const vivid = (d, i) => { const [s, v] = sat(d, i); return s > 0.42 && v > 0.32; };
+function onTap(ev) {
+  if (STEP !== 2 || !curFrame || tapIdx < 0) return;
+  const p = toWork(ev.clientX, ev.clientY); if (!p) return;
+  const d = curFrame.d, R = Math.round(W * 0.045);
+  if (tapIdx < 3) {
+    const bl = blobAt(d, Math.round(p.x), Math.round(p.y), R, vivid);
+    const pt = bl ? { x: (bl.x0 + bl.x1) / 2, y: bl.y1 + 0.5 } : p;  // 콘의 바닥 가운데
+    S.pts[tapIdx] = { x: pt.x / W, y: pt.y / H, snap: !!bl };
+  } else {
+    const bl = blobAt(d, Math.round(p.x), Math.round(p.y), R, vivid);
+    if (bl && bl.n >= 4) { const r = Math.max(2, (bl.x1 - bl.x0 + 1) / 2); S.pts[3] = { x: bl.cx / W, y: (bl.y0 + r) / H, snap: true }; S.ballRpx = r; setBallColor(bl.col.map(Math.round)); }
+    else { S.pts[3] = { x: p.x / W, y: p.y / H, snap: false }; const i = (Math.round(p.y) * W + Math.round(p.x)) * 4; setBallColor([d[i], d[i + 1], d[i + 2]]); S.ballRpx = 5; }
+  }
+  save(); buildGeo();
+  tapIdx = S.pts.findIndex(q => !q); renderPts(); draw();
+}
+ov.addEventListener('pointerdown', onTap);
+function dispRect() { const vw = vid.videoWidth || W, vh = vid.videoHeight || H, cw = ov.clientWidth, ch = ov.clientHeight; const sc = Math.min(cw / vw, ch / vh); const w = vw * sc, h = vh * sc; return { x: (cw - w) / 2, y: (ch - h) / 2, w, h }; }
+function toWork(cx, cy) { const r = ov.getBoundingClientRect(), d = dispRect(); const x = (cx - r.left - d.x) / d.w * W, y = (cy - r.top - d.y) / d.h * H; return x >= 0 && y >= 0 && x < W && y < H ? { x, y } : null; }
+function renderPts() {
+  $('pts').innerHTML = PT_NAMES.map((n, i) => `<div class="pt ${S.pts[i] ? 'ok' : ''} ${i === tapIdx ? 'cur' : ''}"><div class="dot"></div><span>${n}${i === 3 && S.ballCol ? `<i class="sw" style="background:rgb(${S.ballCol.join(',')})"></i>` : ''}</span><button data-re="${i}">다시</button></div>`).join('');
+  $('pts').querySelectorAll('[data-re]').forEach(b => b.onclick = () => { tapIdx = +b.dataset.re; renderPts(); draw(); });
+  $('tapHint').textContent = tapIdx >= 0 ? `화면에서 「${PT_NAMES[tapIdx]}」을(를) 눌러주세요` : '모두 맞췄어요 ✔';
+  teeCheck();
+}
+$('resetPts').onclick = () => { S.pts = [null, null, null, null]; S.ballCol = null; BC = null; GEO = null; tapIdx = 0; save(); renderPts(); draw(); };
+const TEES = [0.5, 0.6, 0.7, 0.8, 0.9, 1.0];
+$('teeRow').innerHTML = TEES.map(t => `<button data-tee="${t}">${Math.round(t * 100)}cm</button>`).join('');
+$('teeRow').querySelectorAll('[data-tee]').forEach(b => b.onclick = () => { S.teeH = +b.dataset.tee; save(); syncTee(); teeCheck(); draw(); });
+function syncTee() { $('teeRow').querySelectorAll('[data-tee]').forEach(b => b.classList.toggle('on', +b.dataset.tee === S.teeH)); }
+syncTee();
+function teeCheck() {
+  const el = $('teeChk'); if (!GEO || GEO.bY == null) { el.textContent = '콘 3개와 공을 맞추면 높이를 확인해요'; el.style.color = ''; return null; }
+  const want = S.teeH + BALL_R, got = GEO.bY, err = Math.abs(got - want) / want;
+  el.innerHTML = `화면으로 잰 공 높이 <b>${got.toFixed(2)}m</b> · 티 ${Math.round(S.teeH * 100)}cm 기준 ${want.toFixed(2)}m → ${err < 0.15 ? '✔ 잘 맞아요' : err < 0.3 ? '⚠ 조금 달라요 (카메라가 비스듬하거나 콘 위치 확인)' : '✖ 많이 달라요 — 콘·공을 다시 찍거나 카메라를 직각으로'}`;
+  el.style.color = err < 0.15 ? '#7ee2a8' : err < 0.3 ? '#ffe066' : '#ff8a8a';
+  return err;
+}
+
+// ---------- 점검 ----------
+let clutter = [];
+function runChecks() {
+  const out = []; const add = (lv, t) => out.push(`<div class="chk ${lv}"><b>${lv === 'ok' ? '✔' : lv === 'warn' ? '!' : '✖'}</b><span>${t}</span></div>`);
+  clutter = [];
+  if (!curFrame) add('bad', '카메라(또는 영상)가 켜져 있지 않아요');
+  const fps = fpsOf();
+  if (source === 'cam') { if (fps >= 50) add('ok', `${fps}fps — 좋아요`); else add('bad', `${fps || '?'}fps — 60fps가 필요해요. 빠른 공은 놓칠 수 있어요`); }
+  if (!GEO || !S.pts[3] || !BC) add('bad', '② 위치 맞추기를 먼저 끝내주세요');
+  else {
+    const ratio = (GEO.s2 - GEO.s1) / GEO.s1;
+    if (ratio > 0.85) add('ok', '콘 간격이 고르게 보여요 (카메라가 거의 직각)');
+    else if (ratio > 0.6) add('warn', '카메라가 조금 비스듬해요. 보정은 하지만 직각에 가깝게 맞추면 더 정확해요');
+    else add('bad', '카메라가 많이 비스듬해요. 공이 날아가는 선과 직각이 되게 돌려주세요');
+    const e = teeCheck(); if (e != null) add(e < 0.15 ? 'ok' : e < 0.3 ? 'warn' : 'bad', e < 0.15 ? '공 높이가 티 높이와 맞아요' : '공 높이가 티 높이와 달라요 — 콘·공 위치나 티 높이 선택을 확인');
+    const edge = rel(GEO.dir > 0 ? W - 1 : 0, GEO.c0.y).x;
+    if (edge >= 2.8) add('ok', `공이 날아가는 구간이 ${edge.toFixed(1)}m 보여요`);
+    else add(edge >= 1.8 ? 'warn' : 'bad', `날아가는 구간이 ${Math.max(0, edge).toFixed(1)}m만 보여요. 3m 이상 보이게 카메라를 뒤로`);
+    { const top = rel(GEO.c0.x + GEO.dx * GEO.s1, 0); const up = top.y + GEO.bY;
+      if (up >= 2.6) add('ok', `1m 지점에서 위로 ${up.toFixed(1)}m까지 보여요`);
+      else add(up >= 2 ? 'warn' : 'bad', `1m 지점에서 위로 ${Math.max(0, up).toFixed(1)}m까지만 보여요. 뜬공이 화면 위로 바로 나가요 — 카메라를 더 뒤로 빼서 2.6m 이상 보이게`); }
+    if (curFrame) {
+      const tr = teeRatio(curFrame.d); if (tr > 0.45) add('ok', '티 위의 공이 잘 보여요'); else add('bad', '티 위의 공이 잘 안 보여요 — 공을 다시 찍어주세요');
+      clutter = findClutter(curFrame.d);
+      const big = clutter.filter(c => c.n >= ballArea() * 0.3);
+      if (!big.length) add('ok', '날아가는 구간에 공과 비슷한 색 물체가 없어요');
+      else add('warn', `공과 비슷한 색 물체 ${big.length}개 (빨간 네모). 가만히 있으면 괜찮지만 움직이면 오류가 나요`);
+    }
+    if (BC && BC.white) add('warn', '흰 공은 배경과 헷갈리기 쉬워요. 노란 공을 추천해요');
+  }
+  $('checks').innerHTML = out.join(''); draw();
+}
+$('runChk').onclick = runChecks;
+const ballArea = () => Math.PI * S.ballRpx * S.ballRpx;
+function inFlightROI(x, y) {
+  const r = rel(x, y); return r.x > S.ballRpx * 2.5 * (r.k || 0.01) && r.x < 8 && r.y > -GEO.bY - 0.15 && r.y < 6;
+}
+function findClutter(d) {
+  const m = new Uint8Array(W * H);
+  for (let y = 0; y < H; y += 1) for (let x = 0; x < W; x += 1) { const p = y * W + x; if (inFlightROI(x, y) && ballLike(d, p * 4)) m[p] = 1; }
+  return comps(m, 200);
+}
+function comps(m, maxN) {
+  const out = [], st = [];
+  for (let p = 0; p < W * H; p++) {
+    if (m[p] !== 1) continue;
+    let n = 0, sx = 0, sy = 0, x0 = 1e9, x1 = -1, y0 = 1e9, y1 = -1; st.push(p); m[p] = 2;
+    while (st.length) { const q = st.pop(), x = q % W, y = (q / W) | 0; n++; sx += x; sy += y; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+      if (x > 0 && m[q - 1] === 1) { m[q - 1] = 2; st.push(q - 1); } if (x < W - 1 && m[q + 1] === 1) { m[q + 1] = 2; st.push(q + 1); }
+      if (y > 0 && m[q - W] === 1) { m[q - W] = 2; st.push(q - W); } if (y < H - 1 && m[q + W] === 1) { m[q + W] = 2; st.push(q + W); } }
+    out.push({ n, cx: sx / n, cy: sy / n, x0, x1, y0, y1 }); if (out.length >= maxN) break;
+  }
+  return out;
+}
+
+// ---------- 티 위 공 감시 ----------
+function teeRatio(d) {
+  if (!S.pts[3] || !BC) return 0;
+  const bx = S.pts[3].x * W, by = S.pts[3].y * H, r = Math.max(2, S.ballRpx * 1.15); let n = 0;
+  for (let y = Math.floor(by - r); y <= by + r; y++) for (let x = Math.floor(bx - r); x <= bx + r; x++) {
+    if (x < 0 || y < 0 || x >= W || y >= H || (x - bx) ** 2 + (y - by) ** 2 > r * r) continue; if (ballLike(d, (y * W + x) * 4)) n++;
+  }
+  return n / Math.max(1, ballArea());
+}
+
+// ---------- 측정 ----------
+let state = 'idle', base = 0, baseArr = [], lowN = 0, cap = [], trigT = 0, okN = 0, lastRes = null, track = null;
+const HIST = [];
+function arm() {
+  if (!GEO || !BC || !S.pts[3]) { setStep(2); return; }
+  state = 'arming'; baseArr = []; lowN = 0; track = null; updBig();
+}
+function disarm() { state = 'idle'; ring.forEach(f => pool.push(f.d)); ring.length = 0; cap.forEach(f => pool.push(f.d)); cap = []; updBig(); }
+$('armBtn').onclick = () => { if (state === 'idle' || state === 'result') arm(); else disarm(); };
+function process(F, still) {
+  if (still) return;
+  // 최근 프레임 보관
+  if (state === 'armed' || state === 'arming') { ring.push(F); if (ring.length > RING) pool.push(ring.shift().d); }
+  if (state === 'arming') {
+    baseArr.push(teeRatio(F.d));
+    if (baseArr.length >= 12) { const s = baseArr.slice().sort((a, b) => a - b); base = s[s.length >> 1];
+      if (base < 0.3) { state = 'idle'; bigMsg('티 위의 공이 안 보여요 — 공을 올리거나 ②에서 공을 다시 찍어주세요', 'bad'); return; }
+      state = 'armed'; updBig(); }
+  } else if (state === 'armed') {
+    const r = teeRatio(F.d);
+    if (r < base * 0.4) lowN++; else lowN = 0;
+    if (lowN >= 2) {               // 공이 티에서 사라짐 → 맞은 순간
+      const i = ring.length - 2; trigT = ring[i].t;
+      cap = ring.slice(Math.max(0, i - 4)); ring.length = 0; state = 'capture'; updBig();
+    }
+  } else if (state === 'capture') {
+    cap.push(F);
+    if (F.t - trigT > 0.32 || cap.length > 30) { state = 'analyze'; setTimeout(analyze, 0); }
+  } else if (state === 'result' && $('autoRearm').checked) {
+    const r = teeRatio(F.d); if (r > base * 0.7) okN++; else okN = 0;
+    if (okN > 40) { okN = 0; arm(); }
+  }
+}
+function analyze() {
+  const fr = cap; const g = GEO;
+  // 배경: 맞기 직전 프레임 (공은 티 위)
+  let bgI = 0; for (let i = 0; i < fr.length; i++) if (fr[i].t < trigT - 0.03) bgI = i;
+  const bg = fr[bgI].d; const A = ballArea();
+  const cands = [];
+  const m = new Uint8Array(W * H);
+  const roiOK = new Uint8Array(W * H); for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (inFlightROI(x, y)) roiOK[y * W + x] = 1;
+  for (let k = bgI + 1; k < fr.length; k++) {
+    const d = fr[k].d; m.fill(0);
+    for (let p = 0; p < W * H; p++) {
+      if (!roiOK[p]) continue; const i = p * 4;
+      const df = Math.abs(d[i] - bg[i]) + Math.abs(d[i + 1] - bg[i + 1]) + Math.abs(d[i + 2] - bg[i + 2]);
+      if (df > 60 && ballLike(d, i)) m[p] = 1;
+    }
+    for (const c of comps(m, 40)) {
+      if (c.n < Math.max(5, A * 0.2) || c.n > A * 16) continue;
+      const r = rel(c.cx, c.cy); cands.push({ k, t: fr[k].t, x: r.x, y: r.y, px: c.cx, py: c.cy, n: c.n });
+    }
+  }
+  // 궤적 찾기: 두 점으로 속도 추정 → 나머지 점이 맞는지 (중력 포함)
+  const fps = fpsOf() || 60, fdt = 1 / fps;
+  let best = null;
+  const fit = (pts) => {
+    const n = pts.length; let st = 0, sx = 0, stt = 0, stx = 0; for (const p of pts) { st += p.t; sx += p.x; stt += p.t * p.t; stx += p.t * p.x; }
+    const den = n * stt - st * st; if (!den) return null; const vx = (n * stx - st * sx) / den, b = (sx - vx * st) / n; if (vx <= 0) return null;
+    const tc = -b / vx; let num = 0, dd = 0; for (const p of pts) { const tau = p.t - tc; num += tau * (p.y + 0.5 * G * tau * tau); dd += tau * tau; }
+    const vy = num / dd; let e = 0; for (const p of pts) { const tau = p.t - tc; e += (p.x - vx * tau) ** 2 + (p.y - (vy * tau - 0.5 * G * tau * tau)) ** 2; }
+    return { vx, vy, tc, rms: Math.sqrt(e / n) };
+  };
+  for (let a = 0; a < cands.length; a++) for (let b = 0; b < cands.length; b++) {
+    const A1 = cands[a], B1 = cands[b]; if (B1.k <= A1.k || B1.x <= A1.x) continue;
+    const vx = (B1.x - A1.x) / (B1.t - A1.t); if (vx < 2 || vx > 60) continue;
+    const tc = A1.t - A1.x / vx; if (tc < trigT - 2.5 * fdt || tc > trigT + 1.5 * fdt) continue;
+    const ta = A1.t - tc, tb = B1.t - tc; if (ta <= 0) continue;
+    const vy = ((A1.y + 0.5 * G * ta * ta) / ta + (B1.y + 0.5 * G * tb * tb) / tb) / 2;
+    if (Math.abs(vy) > 50) continue;
+    const used = new Map();
+    for (const c of cands) { const tau = c.t - tc; if (tau <= 0) continue; const e = Math.hypot(c.x - vx * tau, c.y - (vy * tau - 0.5 * G * tau * tau)); const tol = 0.12 + 0.02 * vx * tau; if (e < tol && (!used.has(c.k) || used.get(c.k).e > e)) used.set(c.k, { c, e }); }
+    const pts = [...used.values()].map(u => u.c); if (pts.length < 2) continue;
+    const f = fit(pts); if (!f) continue;
+    const score = pts.length * 10 - f.rms * 20;
+    if (!best || score > best.score) best = { score, pts, f };
+  }
+  cap.forEach(f => { if (f !== curFrame) pool.push(f.d); }); cap = [];
+  // 거짓 신호(공이 그대로 있음) 확인
+  if (curFrame && teeRatio(curFrame.d) > base * 0.7 && (!best || best.pts.length < 3)) { state = 'armed'; ring.length = 0; lowN = 0; updBig(); return; }
+  let res;
+  if (!best || best.pts.length < 3) res = { ok: false, why: best ? '공이 화면에 2프레임 이하로만 찍혔어요 (화면 밖으로 너무 빨리 나감)' : '공의 궤적을 찾지 못했어요' };
+  else {
+    const { vx, vy, rms } = best.f, n = best.pts.length;
+    const ev = Math.hypot(vx, vy) * 3.6, la = Math.atan2(vy, vx) * 180 / Math.PI;
+    const conf = n >= 4 && rms < 0.08 ? 'hi' : n >= 3 && rms < 0.14 ? 'mid' : 'lo';
+    res = { ok: true, ev, la, n, rms, conf, pts: best.pts };
+  }
+  lastRes = res; track = res.ok ? res.pts : null; showRes(res);
+  state = 'result'; okN = 0; updBig(); draw();
+  window.__results = (window.__results || []).concat([{ ok: res.ok, ev: res.ev, la: res.la, n: res.n, rms: res.rms, conf: res.conf, cands: cands.length, trigT }]);
+}
+function showRes(r) {
+  $('res').style.display = 'block';
+  if (!r.ok) { $('rEv').textContent = '-'; $('rLa').textContent = '-'; $('rCf').className = 'cf lo'; $('rCf').textContent = '측정 실패 · ' + r.why; $('rNote').textContent = '다시 치거나 직접 입력해 주세요. 계속 실패하면 ③ 점검을 다시 해요.'; }
+  else {
+    $('rEv').textContent = Math.round(r.ev); $('rLa').textContent = Math.round(r.la);
+    $('rCf').className = 'cf ' + r.conf; $('rCf').textContent = '신뢰도 ' + { hi: '높음', mid: '보통', lo: '낮음 — 이 값은 쓰지 마세요' }[r.conf] + ` · 공 ${r.n}개 프레임에서 찾음`;
+    $('rNote').textContent = '화면의 초록 점이 실제 공 위치와 맞는지 확인해 주세요.';
+  }
+  HIST.unshift(r); $('hist').innerHTML = HIST.slice(0, 20).map((h, i) => `<div><span>${HIST.length - i}번</span><span class="num">${h.ok ? Math.round(h.ev) + 'km/h · ' + Math.round(h.la) + '°' : '실패'}</span><span class="cf ${h.ok ? h.conf : 'lo'}">${h.ok ? { hi: '높음', mid: '보통', lo: '낮음' }[h.conf] : '-'}</span></div>`).join('');
+}
+function bigMsg(t, cls) { const b = $('big'); b.textContent = t; b.className = cls || ''; b.style.display = 'block'; }
+function updBig() {
+  const b = $('big');
+  if (STEP !== 4) { b.style.display = 'none'; return; }
+  $('armBtn').textContent = state === 'idle' || state === 'result' ? '타격 준비' : '준비 취소';
+  if (state === 'arming') bigMsg('준비 중…', 'warn');
+  else if (state === 'armed') bigMsg('준비됨 · 타격하세요', 'armed');
+  else if (state === 'capture' || state === 'analyze') bigMsg('측정 중…', 'warn');
+  else if (state === 'result' && lastRes) bigMsg(lastRes.ok ? `${Math.round(lastRes.ev)} km/h · ${Math.round(lastRes.la)}°` : '측정 실패', lastRes.ok && lastRes.conf !== 'lo' ? '' : 'bad');
+  else bigMsg('「타격 준비」를 눌러주세요', '');
+}
+
+// ---------- 그리기 ----------
+function draw() {
+  const cw = ov.clientWidth, ch = ov.clientHeight; if (ov.width !== cw * devicePixelRatio) { ov.width = cw * devicePixelRatio; ov.height = ch * devicePixelRatio; }
+  og.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0); og.clearRect(0, 0, cw, ch);
+  if (!source) return;
+  const R = dispRect(), sx = R.w / W, sy = R.h / H; const P = (x, y) => [R.x + x * sx, R.y + y * sy];
+  og.lineWidth = 2; og.font = "800 13px 'Gothic A1'";
+  // 비행 구간
+  if (GEO && GEO.bY != null && STEP >= 3) {
+    og.strokeStyle = 'rgba(32,148,196,.8)'; og.setLineDash([6, 5]);
+    const g = GEO; const ux = g.dx, uy = g.dy; const len = g.dir > 0 ? (W - g.c0.x) / Math.abs(ux || 1) : g.c0.x / Math.abs(ux || 1);
+    const a = P(g.c0.x, g.c0.y), b = P(g.c0.x + ux * len, g.c0.y + uy * len); og.beginPath(); og.moveTo(...a); og.lineTo(...b); og.stroke(); og.setLineDash([]);
+  }
+  // 콘 · 공 표시
+  if (STEP === 2 || STEP === 3 || (STEP === 4 && state !== 'capture')) {
+    S.pts.forEach((p, i) => { if (!p) return; const [x, y] = P(p.x * W, p.y * H);
+      og.strokeStyle = i === 3 ? '#ffe066' : '#7ee2a8'; og.fillStyle = og.strokeStyle;
+      if (i < 3) { og.beginPath(); og.moveTo(x - 12, y); og.lineTo(x + 12, y); og.moveTo(x, y - 18); og.lineTo(x, y + 4); og.stroke(); og.fillText(['0m', '1m', '2m'][i], x - 9, y + 18); }
+      else { og.beginPath(); og.arc(x, y, Math.max(6, S.ballRpx * sx * 1.4), 0, Math.PI * 2); og.stroke(); og.fillText('공', x + 12, y - 8); }
+    });
+    if (GEO && S.pts[3]) { // 티 높이선
+      const [x, y] = P(S.pts[3].x * W, S.pts[3].y * H); const g0 = P(GEO.c0.x, GEO.c0.y); og.strokeStyle = 'rgba(255,224,102,.5)'; og.setLineDash([3, 4]); og.beginPath(); og.moveTo(x, y); og.lineTo(x, g0[1]); og.stroke(); og.setLineDash([]);
+    }
+  }
+  if (STEP === 2 && tapIdx >= 0) { og.fillStyle = 'rgba(0,0,0,.55)'; og.fillRect(R.x, R.y + R.h - 34, R.w, 34); og.fillStyle = '#ffe066'; og.font = "800 16px 'Gothic A1'"; og.fillText(`「${PT_NAMES[tapIdx]}」을(를) 눌러주세요`, R.x + 12, R.y + R.h - 12); }
+  if (STEP === 3) { og.strokeStyle = '#ff3b3b'; clutter.forEach(c => { if (c.n < ballArea() * 0.3) return; const a = P(c.x0 - 3, c.y0 - 3), b = P(c.x1 + 3, c.y1 + 3); og.strokeRect(a[0], a[1], b[0] - a[0], b[1] - a[1]); }); }
+  if (STEP === 4 && track) { og.fillStyle = '#2ecc71'; og.strokeStyle = '#2ecc71'; og.beginPath(); track.forEach((p, i) => { const [x, y] = P(p.px, p.py); i ? og.lineTo(x, y) : og.moveTo(x, y); }); og.stroke(); track.forEach(p => { const [x, y] = P(p.px, p.py); og.beginPath(); og.arc(x, y, 5, 0, Math.PI * 2); og.fill(); }); }
+}
+addEventListener('resize', draw);
+buildGeo(); renderPts();
+// 시험용
+window.__m = { openFile, setPts(pts, teeH) { S.pts = pts.map(p => p && { x: p[0], y: p[1], snap: true }); if (teeH) S.teeH = teeH; tapIdx = S.pts.findIndex(q => !q); buildGeo(); renderPts(); }, tapAt(i, x, y) { tapIdx = i; const r = ov.getBoundingClientRect(), d = dispRect(); onTap({ clientX: r.left + d.x + x * d.w, clientY: r.top + d.y + y * d.h }); }, setStep, arm, state: () => state, geo: () => GEO, S: () => S, teeRatio: () => curFrame ? teeRatio(curFrame.d) : -1, base: () => base };
+})();
+</script>
+</body>
+</html>
